@@ -2,8 +2,8 @@
 
 [![Docker CI][docker-action-shield]][docker-action-link]
 
-[docker-action-shield]: https://github.com/coq-community/coq-program-verification-template/workflows/Docker%20CI/badge.svg?branch=master
-[docker-action-link]: https://github.com/coq-community/coq-program-verification-template/actions?query=workflow:"Docker%20CI"
+[docker-action-shield]: https://github.com/coq-community/coq-program-verification-template/actions/workflows/docker-action.yml/badge.svg?branch=master
+[docker-action-link]: https://github.com/coq-community/coq-program-verification-template/actions/workflows/docker-action.yml
 
 Template project for program verification in Coq.
 Uses the Verified Software Toolchain and a classic binary
@@ -12,10 +12,10 @@ search program in C as an example.
 ## Meta
 
 - License: [Unlicense](LICENSE) (change to your license of choice)
-- Compatible Coq versions: 8.14 or later
+- Compatible Coq versions: 8.16 or later
 - Additional dependencies:
-  - [CompCert](http://compcert.inria.fr) 3.12 or later
-  - [Verified Software Toolchain](https://vst.cs.princeton.edu) 2.12 or later
+  - [CompCert](http://compcert.inria.fr) 3.13.1 or later
+  - [Verified Software Toolchain](https://vst.cs.princeton.edu) 2.13 or 2.14
 - Coq namespace: `ProgramVerificationTemplate`
 
 ## Building instructions
@@ -27,7 +27,7 @@ the [Coq Platform](https://github.com/coq/platform/releases/latest).
 To install dependencies manually via [opam](https://opam.ocaml.org/doc/Install.html):
 ```shell
 opam repo add coq-released https://coq.inria.fr/opam/released
-opam install coq.8.16.1 coq-compcert.3.12 coq-vst.2.12
+opam install coq.8.19.2 coq-compcert.3.13.1 coq-vst.2.14
 ```
 
 ### Obtaining the project
@@ -46,7 +46,7 @@ make   # or make -j <number-of-cores-on-your-machine>
 
 ### Option 2: building the project using Dune
 
-With the [Dune build system][dune-url], version 3.8.1 or later:
+With the [Dune build system][dune-url], version 3.5 or later:
 ```shell
 dune build
 ```
