@@ -1,10 +1,11 @@
 (coq.theory
- (name ProgramVerificationTemplate)
- (package coq-program-verification-template)
- (synopsis "Coq program verification project template"))
+ (name metaconfigurations)
+ (theories stdpp)
+ (package metaconfig)
+ (synopsis "Coq formalization of metaconfigurations"))
 
-(rule
- (target binary_search.v)
- (deps ../src/binary_search.c)
- (action (run clightgen -o %{target} -normalize %{deps}))
- (mode fallback))
+; (rule
+;  (target binary_search.v)
+;  (deps ../src/binary_search.c)
+;  (action (run clightgen -o %{target} -normalize %{deps}))
+;  (mode fallback))
