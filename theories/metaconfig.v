@@ -6,6 +6,8 @@ From Coq Require Import String.
 (** Represent the registers of a process as a map between identifiers and their integer value *)
 (* Definition register_file := gmap string nat. *)
 
+Module Metaconfig.
+
 Variant register (Name : Type) : Type :=
   | Register (name : Name)
   | PC.
@@ -80,10 +82,114 @@ Module Queue.
 
 End Queue.
 
-Record object (Π : Type) := {
+(* Record object (Π : Type) := {
   type : object_type Π;
   state : type.(Σ Π);
+}. *)
+
+
+(* When process executes line of code, may update some number of objects
+   and also make modifications to its private registers.
+   So, represent program as a relation relating *)
+
+Class Object (Ω : Type) (Π : Type) := {
+  type : Ω → object_type Π;
+  (* state : ∀ (ω : Ω), (type ω).(Σ Π) *)
 }.
+
+Class Process (Π : Type) := {
+  (* pc : Π → nat; *)
+  register_names : Π → Type;
+  (* register_values : register_names → nat; *)
+}.
+
+(* Record Implementation {Ω Π : Type} `{Object Ω Π} := {
+  base_objects : Type;
+}. *)
+
+Inductive value :=
+  | Int (n : Z)
+  | Bool (b : bool)
+  | Unit.
+
+Section Run.
+
+  Variables Ω Π : Type.
+
+  Context `{Object Ω Π} `{Process Π}.
+
+  Record configuration := {
+    (* Private registers of each process *)
+    register_values (π : Π) : register_names π → value;
+    (* Program counter of each process *)
+    pc : Π → nat;
+    (* Assignment of state to every object *)
+    object_states (ω : Ω) : (type ω).(Σ Π);
+  }.
+
+  (* Describes semantics of program *)
+  Variable step : configuration → Π → nat → configuration → Prop.
+
+  (** Well-formedness condition requiring that one process taking 
+      a step doesn't affect the private registers of other processes *)
+  Variable step_wf : 
+    ∀ c π π' l c',
+      (* If (c, (π, l), c') is a step *)
+      step c π l c' →
+      (* For any other process π' *)
+      π <> π' →
+      (* The private registers of π are the same in c' as in c *)
+      register_values c π' = register_values c' π'.
+
+  CoInductive run : Type :=
+    | Final (final : configuration)
+    | Step (π : Π) (l : nat) (conf : configuration) (tl : run).
+
+  CoInductive run' : Type :=
+    | Nil
+    | Cons (π : Π) (l : nat) (conf : configuration) (tl : run').
+
+  CoInductive Run' (c : configuration) : run' → Prop :=
+    | RunNil : Run' c Nil
+    | RunCons π l c' tl : step c π l c' → Run' c' tl → Run' c (Cons π l c' tl).
+
+  Inductive Finite' : run' → Prop :=
+    | FiniteNil : Finite' Nil
+    | FiniteCons π l conf tl : Finite' tl → Finite' (Cons π l conf tl).
+
+  CoInductive Infinite' : run' → Prop :=
+    Infinite_intro' π l conf tl : Infinite' tl → Infinite' (Cons π l conf tl).
+
+  Variant run : Type := Run (initial : configuration) (tl : run').
+
+  Variant Is_run : run → Prop :=
+    Is_run_intro initial tl : Run' initial tl → Is_run (Run initial tl).
+
+  Variant Finite : run → Prop :=
+    Finite_intro initial tl : Finite' tl → Finite (Run initial tl).
+
+  
+
+   
+
+  (* Inductive run : Type :=
+    | Initial (initial : configuration)
+    | Step (prefix : run) (π : Π) (l : nat) (conf : configuration).
+    
+
+  Definition final_configuration r :=
+    match r with
+    | Initial final | Step _ _ _ final => final
+    end.
+
+  CoInductive Run : run → Prop :=
+    | RunInitial (initial : configuration) : Run (Initial initial)
+    | RunStep (prefix : run) (π : Π) (l : nat) (c : configuration) : 
+        Run prefix → step (final_configuration prefix) π l c → Run (Step prefix π l c). *)
+
+End Run.
+
+Check EqDec.
 
 (* Module Objects.
   Record t (Π : Type) := {
@@ -105,6 +211,10 @@ Record configuration (Ω : Type) (Π : Type) (object_types : Ω → object_type 
   (* Assignment of values to every private register *)
   register_values : ∀ (π : Π), register (registers π) → nat;
 }.
+
+Parameter step : 
+
+End Metaconfig.
 
 (* Module Objects.
   Record t := {
@@ -236,3 +346,5 @@ Proof.
   (* Placeholder for the actual linearizability proof, which requires specifics *)
   admit.
 Admitted.
+
+End Metaconfig.
