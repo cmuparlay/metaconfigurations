@@ -9,5 +9,5 @@ Reserved Notation "⟨ σ , δ , ϵ , e ⟩ ⇓ v"
 Module Expr.
   (* configuration should include store bindings from thread-local variables to values *)
   Inductive Step : Type :=
-    | 
+    | Step
 End Expr.
