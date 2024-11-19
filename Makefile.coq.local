@@ -1,5 +1,0 @@
-theories/binary_search.v: src/binary_search.c
-	clightgen -o $@ -normalize $<
-
-bsearch: src/binary_search.c
-	ccomp -o $@ $<

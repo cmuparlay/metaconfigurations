@@ -1,5 +1,8 @@
--Q theories ProgramVerificationTemplate
+-Q _build/default/theories Metaconfigurations
 
-theories/binary_search.v
-theories/binary_search_theory.v
-theories/binary_search_verif.v
+_build/default/theories/Syntax.v
+_build/default/theories/Dynamics.v
+_build/default/theories/Metaconfig.v
+_build/default/theories/Object.v
+_build/default/theories/Statics.v
+_build/default/theories/Syntax.v
