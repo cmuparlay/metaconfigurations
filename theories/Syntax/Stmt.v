@@ -20,7 +20,7 @@ Section Stmt.
     | If (e : Term.t Π Ω π) (s₁ : t) (s₂ : t)
     | Goto (l : nat)
     | Return (e : Term.t Π Ω π)
-    | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : t).
+    | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : Term.t Π Ω π).
 
   Notation "s₁ `; s₂" := (Seq s₁ s₂) (at level 80).
   Notation "x ← e" := (Assign x e) (at level 80).
