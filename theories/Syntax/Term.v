@@ -39,7 +39,7 @@ Section Term.
 End Term.
 
 
-(* Module Stmt.
+Module Stmt.
   Inductive t : Type :=
     | Seq (s₁ : t) (s₂ : t)
     | Assign (x : string) (e : Expr.t)
@@ -48,6 +48,6 @@ End Term.
     | Goto (l : nat)
     | Return (e : Expr.t)
     | Call (obj : string) (op : string) (es : list t).
-End Stmt. *)
+End Stmt.
 
 

@@ -1,32 +1,30 @@
 From stdpp Require Import base decidable.
+Require Import Program.
 
-Section Map.
+Definition dependent (K : Type) (V : K → Type) := ∀ k : K, V k.
 
-  Variable K V : Type.
+Definition rebind {K : Type} {V : K → Type} `{EqDecision K} : 
+  ∀ k : K, V k → dependent K V → dependent K V.
+Proof.
+  intros k v m k'. unfold EqDecision in *. destruct (decide (k = k')).
+  - destruct e. exact v.
+  - exact (m k').
+Defined.
 
-  Context `{EqDecision K}.
+Definition lookup {K : Type} {V : K → Type} `{EqDecision K} (k : K) (m : dependent K V) : V k := m k.
 
-  Definition t := K → V.
+Theorem lookup_rebind_same {K : Type} {V : K → Type} `{EqDecision K} (k : K) (v : V k) (m : dependent K V) : 
+  lookup k (rebind k v m) = v.
+Proof.
+  destruct (decide (k = k)); cbv; 
+  destruct (EqDecision0 k k); intuition.
+  dependent destruction e0. reflexivity.
+Qed.
 
-  Definition rebind : K → V → t → t.
-  Proof.
-    intros k v m k'. unfold EqDecision in *. destruct (decide (k = k')).
-    - exact v.
-    - exact (m k').
-  Defined.
+Theorem lookup_rebind_diff {K : Type} {V : K → Type} `{EqDecision K} (k k' : K) (v : V k) (m : dependent K V) 
+  : k ≠ k' → lookup k' (rebind k v m) = lookup k' m.
+Proof.
+  intros. unfold lookup, rebind. now destruct (decide (k = k')).
+Qed.
 
-  Definition lookup (k : K) (m : t) : V := m k.
-
-  Definition with_default (d : V) : t := λ _, d.
-
-  Theorem lookup_rebind_same k v m : lookup k (rebind k v m) = v.
-  Proof.
-    unfold lookup, rebind. now destruct (decide (k = k)).
-  Qed.
-
-  Theorem lookup_rebind_diff k k' v m : k ≠ k' → lookup k' (rebind k v m) = lookup k' m.
-  Proof.
-    intros. unfold lookup, rebind. now destruct (decide (k = k')).
-  Qed.
-
-End Map.
+Definition t (K V : Type) := dependent K (λ _, V).

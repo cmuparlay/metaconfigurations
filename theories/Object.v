@@ -7,6 +7,7 @@ From Metaconfigurations.Statics Require Import Value.
 Record object_type (Π : Type) := {
   Σ : Type;
   OP : Type;
+  (* OP : ARG OP → RES OP *)
   ARG : OP → Ty.t;
   RES : OP → Ty.t;
   δ : Σ → Π → ∀ op, V⟦ ARG op ⟧ → V⟦ RES op ⟧;
