@@ -28,3 +28,5 @@ Proof.
 Qed.
 
 Definition t (K V : Type) := dependent K (λ _, V).
+
+Definition with_default {K V} (d : V) : t K V := λ _, d.

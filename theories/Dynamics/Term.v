@@ -36,12 +36,21 @@ Section Eval.
     | 
     end. *)
 
-  Inductive eval (ψ : Map.t (register_names π) Value.t) (ϵ : states) : Term.t Π Ω π → states → Value.t → Prop := 
-    | eval_var (x : register_names π) : ⟨ ψ , ϵ , Var x ⟩ ⇓ₑ ⟨ ϵ , @Map.lookup _ _ (eq_dec π) x ψ ⟩
+(* (ω : Ω) (op : (type ω).(OP Π)) (arg : (type ω).(ARG Π) *)
+
+  Variant eval_inv ϵ ω op arg σ res :=
+    | eval_inv_intro :
+      ∀ H : ⊢ᵥ arg `: (type ω).(ARG Π) op,
+      (type ω).(δ Π) (Map.lookup ω ϵ) π op (exist _ arg H) = (σ, res) →
+      eval_inv ϵ ω op arg σ res.
+
+  Inductive eval (ψ : RegisterFile.t π) (ϵ : states) : Term.t Π Ω π → states → Value.t → Prop := 
+    | eval_var x v :
+      ψ !! x = Some v →
+      ⟨ ψ , ϵ , Var x ⟩ ⇓ₑ ⟨ ϵ , v ⟩
     | eval_invoke ω op arg argᵥ res ϵ' σ :
       ⟨ ψ , ϵ , arg ⟩ ⇓ₑ ⟨ ϵ' , argᵥ ⟩ →
-      ∀ H : ⊢ᵥ argᵥ `: (type ω).(ARG Π) op,
-      (type ω).(δ Π) (Map.lookup ω ϵ) π op (exist _ argᵥ H) = (σ, res) →
+      eval_inv ϵ ω op argᵥ σ res →
       ⟨ ψ , ϵ , Invoke ω op arg ⟩ ⇓ₑ ⟨ rebind ω σ ϵ' , proj1_sig res ⟩
     | eval_bop bop e₁ e₂ v₁ v₂ v ϵ₁ ϵ₂ : 
       ⟨ ψ , ϵ , e₁ ⟩ ⇓ₑ ⟨ ϵ₁ , v₁ ⟩ →

@@ -22,4 +22,14 @@ Section Stmt.
     | Return (e : Term.t Π Ω π)
     | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : t).
 
+  Notation "s₁ `; s₂" := (Seq s₁ s₂) (at level 80).
+  Notation "x ← e" := (Assign x e) (at level 80).
+
 End Stmt.
+
+Arguments Seq {_ _ _ _ _ _}.
+Arguments Assign {_ _ _ _ _ _}.
+Arguments If {_ _ _ _ _ _ }.
+Arguments Goto {_ _ _ _ _ _}.
+Arguments Return {_ _ _ _ _ _}.
+Arguments Invoke {_ _ _ _ _ _}.
