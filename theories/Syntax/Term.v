@@ -12,42 +12,29 @@ Variant bop : Set :=
 
 Variant uop : Set := Not.
 
-Section Term.
+Inductive t (Π Ω : Type) (π : Π) `{Process Π} `{Object Π Ω} : Type :=
+  | Var (x : register_names π)
+  | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : t Π Ω π)
+  | Bop (op : bop) (e₁ : t Π Ω π) (e₂ : t Π Ω π)
+  | Uop (op : uop) (e : t Π Ω π)
+  | Pair (e₁ : t Π Ω π) (e₂ : t Π Ω π)
+  | ProjL (e : t Π Ω π)
+  | ProjR (e : t Π Ω π)
+  | Int (n : Z)
+  | Bool (b : bool)
+  | Unit.
 
-  Variable Π : Type.
+Arguments Var {Π Ω π _ _ _}.
+Arguments Invoke {Π Ω π _ _ _}.
+Arguments Bop {Π Ω π _ _ _}.
+Arguments Uop {Π Ω π _ _ _}.
+Arguments Pair {Π Ω π _ _ _}.
+Arguments ProjL {Π Ω π _ _ _}.
+Arguments ProjR {Π Ω π _ _ _}.
+Arguments Int {Π Ω π _ _ _}.
+Arguments Bool {Π Ω π _ _ _}.
+Arguments Unit {Π Ω π _ _ _}.
 
-  Context `{Process Π}.
+Notation "'⊤ₑ'" := Unit.
 
-  Variable Ω : Type.
-
-  Context `{Object Π Ω}.
-
-  Variable π : Π.
-
-  Inductive t : Type :=
-    | Var (x : register_names π)
-    | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : t)
-    | Bop (op : bop) (e₁ : t) (e₂ : t)
-    | Uop (op : uop) (e : t)
-    | Pair (e₁ : t) (e₂ : t)
-    | ProjL (e : t)
-    | ProjR (e : t)
-    | Int (n : Z)
-    | Bool (b : bool)
-    | Unit.
-
-End Term.
-
-
-Module Stmt.
-  Inductive t : Type :=
-    | Seq (s₁ : t) (s₂ : t)
-    | Assign (x : string) (e : Expr.t)
-    | If (e : Expr.t) (s₁ : t) (s₂ : t)
-    (* | While (e : Expr.t) (s : t) *)
-    | Goto (l : nat)
-    | Return (e : Expr.t)
-    | Call (obj : string) (op : string) (es : list t).
-End Stmt.
-
-
+Notation "⟨ e₁ , e₂ ⟩ₑ" := (Pair e₁ e₂).

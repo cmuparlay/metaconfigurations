@@ -10,10 +10,10 @@ Record object_type (Π : Type) := {
   (* OP : ARG OP → RES OP *)
   ARG : OP → Ty.t;
   RES : OP → Ty.t;
-  δ : Σ → Π → ∀ op, V⟦ ARG op ⟧ → V⟦ RES op ⟧;
+  δ : Σ → Π → ∀ op, V⟦ ARG op ⟧ → Σ * V⟦ RES op ⟧;
 }.
 
-Class Object (Π : Type) (Ω : Type) := {
+Class Object (Π : Type) (Ω : Type) `{EqDecision Ω} := {
   type : Ω → object_type Π;
   (* state : ∀ (ω : Ω), (type ω).(Σ Π) *)
 }.
