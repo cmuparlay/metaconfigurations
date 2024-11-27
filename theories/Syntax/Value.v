@@ -16,5 +16,7 @@ Coercion Bool : bool >-> t.
 
 Notation "'⊤ᵥ'" := Unit.
 
-Notation "⟨ v₁ , v₂ ⟩ᵥ" := (Pair v₁ v₂).
+Declare Scope value_scope.
+
+Notation "⟨ v₁ , v₂ ⟩ᵥ" := (Pair v₁ v₂) : value_scope.
 

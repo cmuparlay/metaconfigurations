@@ -293,6 +293,7 @@ Section Implementation.
   }.
 
   (* Inductive line (π : Π) : Type :=
+    | Write (register_assignment π → Value) (r : register_names π).
     Line 
       (invs : list Invocation) (* Invocations on base objects possibly performed *)
       (transition : 
@@ -300,16 +301,6 @@ Section Implementation.
         nat (* Current program counter *) →
         register_assignment π Value → (* And current value of private registers *)
         nat * register_assignment π Value (* Compute next PC and values of private registers *)). *)
-
-    Inductive line (π : Π) : Type :=
-      | Write (register_assignment π → Value) (r : register_names π).
-      (* Line 
-        (invs : list Invocation) (* Invocations on base objects possibly performed *)
-        (transition : 
-          { results | Forall2 (fun inv => (type (inv.(ψ))).(RES Value Π)) invs results } → (* Results from operations on base objects *)
-          nat (* Current program counter *) →
-          register_assignment π Value → (* And current value of private registers *)
-          nat * register_assignment π Value (* Compute next PC and values of private registers *)). *)
 
 
   Record procedure (π : Π) (op : operations (type ω)) (arg : arguments (type ω) op) := {

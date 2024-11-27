@@ -4,11 +4,9 @@ Require Import Coq.Strings.String.
 
 Section Stmt.
 
-  Variable Π : Type.
+  Context {Π : Type} `{Process Π}.
 
-  Context `{Process Π}.
-
-  Variables Ω : Type.
+  Variable Ω : Type.
 
   Context `{Object Π Ω}.
 
@@ -16,11 +14,11 @@ Section Stmt.
 
   Inductive t : Type :=
     | Seq (s₁ : t) (s₂ : t)
-    | Assign (x : register_names π) (e : Term.t Π Ω π)
-    | If (e : Term.t Π Ω π) (s₁ : t) (s₂ : t)
+    | Assign (x : register_names π) (e : Term.t Ω π)
+    | If (e : Term.t Ω π) (s₁ : t) (s₂ : t)
     | Goto (l : nat)
-    | Return (e : Term.t Π Ω π)
-    | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : Term.t Π Ω π).
+    | Return (e : Term.t Ω π)
+    | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : Term.t Ω π).
 
   Notation "s₁ `; s₂" := (Seq s₁ s₂) (at level 80).
   Notation "x ← e" := (Assign x e) (at level 80).

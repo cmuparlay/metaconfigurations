@@ -12,19 +12,21 @@ Variant bop : Set :=
 
 Variant uop : Set := Not.
 
-Inductive t (Π Ω : Type) (π : Π) `{Process Π} `{Object Π Ω} : Type :=
-  | Var (x : register_names π)
-  | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : t Π Ω π)
-  | Bop (op : bop) (e₁ : t Π Ω π) (e₂ : t Π Ω π)
-  | Uop (op : uop) (e : t Π Ω π)
-  | Pair (e₁ : t Π Ω π) (e₂ : t Π Ω π)
-  | ProjL (e : t Π Ω π)
-  | ProjR (e : t Π Ω π)
+Declare Scope term_scope.
+
+Inductive t {Π : Type} (Ω : Type) (π : Π) `{Process Π} `{Object Π Ω} : Type :=
+  | Reg (x : register_names π)
+  | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : t Ω π)
+  | Bop (op : bop) (e₁ : t Ω π) (e₂ : t Ω π)
+  | Uop (op : uop) (e : t Ω π)
+  | Pair (e₁ : t Ω π) (e₂ : t Ω π)
+  | ProjL (e : t Ω π)
+  | ProjR (e : t Ω π)
   | Int (n : Z)
   | Bool (b : bool)
   | Unit.
 
-Arguments Var {Π Ω π _ _ _}.
+Arguments Reg {Π Ω π _ _ _}.
 Arguments Invoke {Π Ω π _ _ _}.
 Arguments Bop {Π Ω π _ _ _}.
 Arguments Uop {Π Ω π _ _ _}.
@@ -37,4 +39,4 @@ Arguments Unit {Π Ω π _ _ _}.
 
 Notation "'⊤ₑ'" := Unit.
 
-Notation "⟨ e₁ , e₂ ⟩ₑ" := (Pair e₁ e₂).
+Notation "⟨ e₁ , e₂ ⟩ₑ" := (Pair e₁ e₂) : term_scope.

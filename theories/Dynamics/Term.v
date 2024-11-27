@@ -3,17 +3,15 @@ From Metaconfigurations Require Import
 From stdpp Require Import base.
 Require Import Coq.ZArith.BinInt.
 
+Global Declare Scope dynamics_scope.
+
 Section Eval.
 
-  Variable Π : Type.
+  Context {Π : Type} `{Process Π}.
 
-  Context `{H : Process Π}.
+  Context {Ω : Type} `{Object Π Ω}.
 
-  Variable Ω : Type.
-
-  Context `{Object Π Ω}.
-
-  Variable π : Π.
+  Context {π : Π}.
 
   Definition states := Map.dependent Ω (Σ Π ∘ type).
 
@@ -44,10 +42,10 @@ Section Eval.
       (type ω).(δ Π) (Map.lookup ω ϵ) π op (exist _ arg H) = (σ, res) →
       eval_inv ϵ ω op arg σ res.
 
-  Inductive eval (ψ : RegisterFile.t π) (ϵ : states) : Term.t Π Ω π → states → Value.t → Prop := 
+  Inductive eval (ψ : RegisterFile.t π) (ϵ : states) : Term.t Ω π → states → Value.t → Prop := 
     | eval_var x v :
       ψ !! x = Some v →
-      ⟨ ψ , ϵ , Var x ⟩ ⇓ₑ ⟨ ϵ , v ⟩
+      ⟨ ψ , ϵ , Reg x ⟩ ⇓ₑ ⟨ ϵ , v ⟩
     | eval_invoke ω op arg argᵥ res ϵ' σ :
       ⟨ ψ , ϵ , arg ⟩ ⇓ₑ ⟨ ϵ' , argᵥ ⟩ →
       eval_inv ϵ ω op argᵥ σ res →
@@ -77,5 +75,5 @@ Section Eval.
       ⟨ ψ , ϵ , Term.Bool b ⟩ ⇓ₑ ⟨ ϵ , b ⟩
     | eval_unit :
       ⟨ ψ , ϵ , ⊤ₑ ⟩ ⇓ₑ ⟨ ϵ , ⊤ᵥ ⟩
-  where "⟨ ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" := (eval ψ ϵ e ϵ' v).
+  where "⟨ ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" := (eval ψ ϵ e ϵ' v) : dynamics_scope.
 End Eval.
