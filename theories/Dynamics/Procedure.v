@@ -117,7 +117,7 @@ Section Procedure.
       end.
 
     Inductive Run : run → Prop :=
-      | Run_initial :  Run (Initial {| outstanding := ∅; ϵ := impl.(initial_states) |})
+      | Run_initial : Run (Initial {| outstanding := ∅; ϵ := impl.(initial_states) |})
       | Run_step r π l c : Run r → step (final r) π l c → Run (Step r π l c).
 
     Fixpoint behavior r : list (Π * line) :=
@@ -165,38 +165,38 @@ Section Augmentation.
 
   Context `{Object Π Ω'}.
 
-  (* Definition lift_term (e : Term.t Π Ω) :  Term.t Π (Ω + Ω').
+  (* Definition lift_term_l (e : Term.t Π Ω) :  Term.t Π (Ω + Ω').
   Proof.
   Defined. *)
 
-  Fixpoint lift_term (e : Term.t Π Ω) : Term.t Π (Ω + Ω') :=
+  Fixpoint lift_term_l (e : Term.t Π Ω) : Term.t Π (Ω + Ω') :=
     match e with
     | Var x => Var x
-    | Term.Invoke ω op arg => Term.Invoke (inl ω) op (lift_term arg)
-    | Bop op e₁ e₂ => Bop op (lift_term e₁) (lift_term e₂)
-    | Uop op e => Uop op (lift_term e)
-    | Term.Pair e₁ e₂ => Term.Pair (lift_term e₁) (lift_term e₂)
-    | ProjL e => ProjL (lift_term e)
-    | ProjR e => ProjR (lift_term e)
+    | Term.Invoke ω op arg => Term.Invoke (inl ω) op (lift_term_l arg)
+    | Bop op e₁ e₂ => Bop op (lift_term_l e₁) (lift_term_l e₂)
+    | Uop op e => Uop op (lift_term_l e)
+    | Term.Pair e₁ e₂ => Term.Pair (lift_term_l e₁) (lift_term_l e₂)
+    | ProjL e => ProjL (lift_term_l e)
+    | ProjR e => ProjR (lift_term_l e)
     | Term.Int n => Term.Int n
     | Term.Bool b => Term.Bool b
     | Term.Unit => Term.Unit
     end.
 
-  Lemma lift_term_complete :
+  Lemma lift_term_l_complete :
     ∀ e π ψ (ϵ₁ ϵ₁' : states Π Ω) v (ϵ₂ : states Π Ω'),
       Term.eval π ψ ϵ₁ e ϵ₁' v →
-        Term.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_term e) (disjoint_union ϵ₁' ϵ₂) v.
+        Term.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_term_l e) (disjoint_union ϵ₁' ϵ₂) v.
   Proof.
     induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
-    rewrite rebind_union_distr. econstructor.
+    rewrite rebind_union_distr_l. econstructor.
       + eapply IHe. eauto.
       + inv H10. econstructor. unfold Map.lookup in *. simpl in *. assumption.
   Qed.
 
-  Lemma lift_term_sound_l :
+  Lemma lift_term_l_sound_l :
     ∀ e π ψ ϵ v ϵ',
-      Term.eval π ψ ϵ (lift_term e) ϵ' v →
+      Term.eval π ψ ϵ (lift_term_l e) ϵ' v →
         Term.eval π ψ (πₗ ϵ) e (πₗ ϵ') v.
   Proof.
     induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
@@ -208,9 +208,9 @@ Section Augmentation.
       assumption.
   Qed.
 
-  Lemma lift_term_sound_r :
+  Lemma lift_term_l_sound_r :
     ∀ e π ψ ϵ v ϵ',
-      Term.eval π ψ ϵ (lift_term e) ϵ' v → πᵣ ϵ = πᵣ ϵ'.
+      Term.eval π ψ ϵ (lift_term_l e) ϵ' v → πᵣ ϵ = πᵣ ϵ'.
   Proof.
     induction e; intros; simpl in *; inv H3; intuition.
     - apply IHe in H9. subst. simpl in *.
@@ -222,62 +222,62 @@ Section Augmentation.
     - apply IHe in H5. assumption.
   Qed.
 
-  Fixpoint lift_stmt (s : Stmt.t Π Ω) : Stmt.t Π (Ω + Ω') :=
+  Fixpoint lift_stmt_l (s : Stmt.t Π Ω) : Stmt.t Π (Ω + Ω') :=
     match s with
-    | Seq s₁ s₂ => Seq (lift_stmt s₁) (lift_stmt s₂)
-    | Assign x e => Assign x (lift_term e)
-    | If e s₁ s₂ => If (lift_term e) (lift_stmt s₁) (lift_stmt s₂)
+    | Seq s₁ s₂ => Seq (lift_stmt_l s₁) (lift_stmt_l s₂)
+    | Assign x e => Assign x (lift_term_l e)
+    | If e s₁ s₂ => If (lift_term_l e) (lift_stmt_l s₁) (lift_stmt_l s₂)
     | Syntax.Stmt.Goto l => Syntax.Stmt.Goto l
-    | Syntax.Stmt.Return e => Syntax.Stmt.Return (lift_term e)
-    | Stmt.Invoke (Invocation ω op arg) => @Syntax.Stmt.Invoke _ (Ω + Ω') _ _ (Invocation (inl ω) op (lift_term arg))
+    | Syntax.Stmt.Return e => Syntax.Stmt.Return (lift_term_l e)
+    | Stmt.Invoke (Invocation ω op arg) => @Syntax.Stmt.Invoke _ (Ω + Ω') _ _ (Invocation (inl ω) op (lift_term_l arg))
     | Skip => Skip
     end.
 
-  Lemma lift_stmt_complete :
+  Lemma lift_stmt_l_complete :
     ∀ s π ψ ψ' (ϵ₁ ϵ₁' : states Π Ω) sig,
       Stmt.eval π ψ ϵ₁ s ψ' ϵ₁' sig →
         ∀ ϵ₂,
-          Stmt.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_stmt s) ψ' (disjoint_union ϵ₁' ϵ₂) sig.
+          Stmt.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_stmt_l s) ψ' (disjoint_union ϵ₁' ϵ₂) sig.
   Proof.
     intros. generalize dependent ϵ₂. induction H3; intros.
     - econstructor.
-    - econstructor. fold lift_stmt. eauto.
+    - econstructor. fold lift_stmt_l. eauto.
     - econstructor. eauto.
-    - econstructor; fold lift_stmt; eauto.
-    - econstructor; eauto. eapply lift_term_complete. auto.
+    - econstructor; fold lift_stmt_l; eauto.
+    - econstructor; eauto. eapply lift_term_l_complete. auto.
     - eapply eval_if_false.
-      + eapply lift_term_complete. eauto.
-      + fold lift_stmt. eapply IHeval.
-    - econstructor. eapply lift_term_complete. eassumption.
+      + eapply lift_term_l_complete. eauto.
+      + fold lift_stmt_l. eapply IHeval.
+    - econstructor. eapply lift_term_l_complete. eassumption.
     - econstructor.
-    - econstructor. eapply lift_term_complete in H3. eauto.
-    - econstructor. eapply lift_term_complete. eassumption.
+    - econstructor. eapply lift_term_l_complete in H3. eauto.
+    - econstructor. eapply lift_term_l_complete. eassumption.
   Qed.
 
-  Lemma lift_stmt_sound_l :
+  Lemma lift_stmt_l_sound_l :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      Stmt.eval π ψ ϵ (lift_stmt s) ψ' ϵ' sig →
+      Stmt.eval π ψ ϵ (lift_stmt_l s) ψ' ϵ' sig →
         Stmt.eval π ψ (πₗ ϵ) s ψ' (πₗ ϵ') sig.
   Proof.
     induction s; intros.
     - inv H3; econstructor; eauto.
-    - inv H3. econstructor. eapply lift_term_sound_l. eassumption.
+    - inv H3. econstructor. eapply lift_term_l_sound_l. eassumption.
     - inv H3.
       + econstructor.
-        * eapply lift_term_sound_l. eassumption.
+        * eapply lift_term_l_sound_l. eassumption.
         * eauto.
       + eapply eval_if_false.
-        * eapply lift_term_sound_l. eassumption.
+        * eapply lift_term_l_sound_l. eassumption.
         * eauto.
     - inv H3. econstructor.
-    - inv H3. econstructor. eapply lift_term_sound_l. assumption.
-    - simpl in *. destruct inv. inv H3. econstructor. eapply lift_term_sound_l. simpl. eassumption.
+    - inv H3. econstructor. eapply lift_term_l_sound_l. assumption.
+    - simpl in *. destruct inv. inv H3. econstructor. eapply lift_term_l_sound_l. simpl. eassumption.
     - inv H3. econstructor.
   Qed.
 
-  Lemma lift_stmt_sound_r :
+  Lemma lift_stmt_l_sound_r :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      Stmt.eval π ψ ϵ (lift_stmt s) ψ' ϵ' sig → πᵣ ϵ = πᵣ ϵ'.
+      Stmt.eval π ψ ϵ (lift_stmt_l s) ψ' ϵ' sig → πᵣ ϵ = πᵣ ϵ'.
   Proof.
     induction s; intros.
     - inv H3.
@@ -289,20 +289,159 @@ Section Augmentation.
     - inv H3. reflexivity.
     - inv H3.
       + etransitivity.
-        * eapply lift_term_sound_r. eassumption.
+        * eapply lift_term_l_sound_r. eassumption.
         * eauto.
       + etransitivity.
-        * eapply lift_term_sound_r. eassumption.
+        * eapply lift_term_l_sound_r. eassumption.
         * eauto.
     - inv H3. econstructor.
-    - inv H3. eapply lift_term_sound_r. eassumption.
-    - cbn in *. destruct inv. inv H3. eapply lift_term_sound_r.
-      assert (Term.Invoke (inl ω0) op (lift_term arg) = lift_term (Term.Invoke ω0 op arg)) by reflexivity.
+    - inv H3. eapply lift_term_l_sound_r. eassumption.
+    - cbn in *. destruct inv. inv H3. eapply lift_term_l_sound_r.
+      assert (Term.Invoke (inl ω0) op (lift_term_l arg) = lift_term_l (Term.Invoke ω0 op arg)) by reflexivity.
       erewrite <- H3.
       eassumption.
     - inv H3. econstructor.
   Qed.
 
-  Definition augmentation : Stmt.t Π Ω
+  (* Definition lift_term_r (e : Term.t Π Ω) :  Term.t Π (Ω + Ω').
+  Proof.
+  Defined. *)
+
+  Fixpoint lift_term_r (e : Term.t Π Ω') : Term.t Π (Ω + Ω') :=
+    match e with
+    | Var x => Var x
+    | Term.Invoke ω op arg => @Term.Invoke _ (Ω + Ω') _ _ (inr ω) op (lift_term_r arg)
+    | Bop op e₁ e₂ => Bop op (lift_term_r e₁) (lift_term_r e₂)
+    | Uop op e => Uop op (lift_term_r e)
+    | Term.Pair e₁ e₂ => Term.Pair (lift_term_r e₁) (lift_term_r e₂)
+    | ProjL e => ProjL (lift_term_r e)
+    | ProjR e => ProjR (lift_term_r e)
+    | Term.Int n => Term.Int n
+    | Term.Bool b => Term.Bool b
+    | Term.Unit => Term.Unit
+    end.
+
+  Lemma lift_term_r_complete :
+    ∀ e π ψ (ϵ₂ ϵ₂' : states Π Ω') v (ϵ₁ : states Π Ω),
+      Term.eval π ψ ϵ₂ e ϵ₂' v →
+        Term.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_term_r e) (disjoint_union ϵ₁ ϵ₂') v.
+  Proof.
+    induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
+    rewrite rebind_union_distr_r. econstructor.
+      + eapply IHe. eauto.
+      + inv H10. econstructor. unfold Map.lookup in *. simpl in *. assumption.
+  Qed.
+
+  Lemma lift_term_r_sound_r :
+    ∀ e π ψ ϵ v ϵ',
+      Term.eval π ψ ϵ (lift_term_r e) ϵ' v →
+        Term.eval π ψ (πᵣ ϵ) e (πᵣ ϵ') v.
+  Proof.
+    induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
+    rewrite πᵣ_rebind_comm. econstructor.
+    + apply IHe. eassumption.
+    + inv H10. constructor. simpl in *.
+      replace (Map.lookup ω0 (πᵣ ϵ0)) 
+          with (Map.lookup (inr ω0) ϵ0) by reflexivity.
+      assumption.
+  Qed.
+
+  Lemma lift_term_r_sound_l :
+    ∀ e π ψ ϵ v ϵ',
+      Term.eval π ψ ϵ (lift_term_r e) ϵ' v → πₗ ϵ = πₗ ϵ'.
+  Proof.
+    induction e; intros; simpl in *; inv H3; intuition.
+    - apply IHe in H9. subst. simpl in *.
+      replace (πₗ ϵ0) with (πₗ ϵ'0).
+      + apply rebind_r_πₗ.
+    - apply IHe1 in H7. apply IHe2 in H10. congruence.
+    - inv H9. eauto.
+    - apply IHe1 in H6. apply IHe2 in H9. congruence.
+    - apply IHe in H5. assumption.
+    - apply IHe in H5. assumption.
+  Qed.
+
+  Fixpoint lift_stmt_r (s : Stmt.t Π Ω') : Stmt.t Π (Ω + Ω') :=
+    match s with
+    | Seq s₁ s₂ => Seq (lift_stmt_r s₁) (lift_stmt_r s₂)
+    | Assign x e => Assign x (lift_term_r e)
+    | If e s₁ s₂ => If (lift_term_r e) (lift_stmt_r s₁) (lift_stmt_r s₂)
+    | Syntax.Stmt.Goto l => Syntax.Stmt.Goto l
+    | Syntax.Stmt.Return e => Syntax.Stmt.Return (lift_term_r e)
+    | Stmt.Invoke (Invocation ω op arg) => @Syntax.Stmt.Invoke _ (Ω + Ω') _ _ (@Invocation _ (Ω + Ω') _ _ (inr ω) op (lift_term_r arg))
+    | Skip => Skip
+    end.
+
+  Lemma lift_stmt_r_complete :
+    ∀ s π ψ ψ' (ϵ₂ ϵ₂' : states Π Ω') sig,
+      Stmt.eval π ψ ϵ₂ s ψ' ϵ₂' sig →
+        ∀ ϵ₁,
+          Stmt.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_stmt_r s) ψ' (disjoint_union ϵ₁ ϵ₂') sig.
+  Proof.
+    intros. generalize dependent ϵ₁. induction H3; intros.
+    - econstructor.
+    - econstructor. fold lift_stmt_r. eauto.
+    - econstructor. eauto.
+    - econstructor; fold lift_stmt_r; eauto.
+    - econstructor; eauto. eapply lift_term_r_complete. auto.
+    - eapply eval_if_false.
+      + eapply lift_term_r_complete. eauto.
+      + fold lift_stmt_r. eapply IHeval.
+    - econstructor. eapply lift_term_r_complete. eassumption.
+    - econstructor.
+    - econstructor. eapply lift_term_r_complete in H3. eauto.
+    - econstructor. eapply lift_term_r_complete. eassumption.
+  Qed.
+
+  Lemma lift_stmt_r_sound_r :
+    ∀ s π ψ ϵ sig ψ' ϵ',
+      Stmt.eval π ψ ϵ (lift_stmt_r s) ψ' ϵ' sig →
+        Stmt.eval π ψ (πᵣ ϵ) s ψ' (πᵣ ϵ') sig.
+  Proof.
+    induction s; intros.
+    - inv H3; econstructor; eauto.
+    - inv H3. econstructor. eapply lift_term_r_sound_r. eassumption.
+    - inv H3.
+      + econstructor.
+        * eapply lift_term_r_sound_r. eassumption.
+        * eauto.
+      + eapply eval_if_false.
+        * eapply lift_term_r_sound_r. eassumption.
+        * eauto.
+    - inv H3. econstructor.
+    - inv H3. econstructor. eapply lift_term_r_sound_r. assumption.
+    - simpl in *. destruct inv. inv H3. econstructor. eapply lift_term_r_sound_r. simpl. eassumption.
+    - inv H3. econstructor.
+  Qed.
+
+  Lemma lift_stmt_r_sound_l :
+    ∀ s π ψ ϵ sig ψ' ϵ',
+      Stmt.eval π ψ ϵ (lift_stmt_r s) ψ' ϵ' sig → πₗ ϵ = πₗ ϵ'.
+  Proof.
+    induction s; intros.
+    - inv H3.
+      + eauto.
+      + eauto.
+      + etransitivity.
+        * eapply IHs1. eauto.
+        * eauto.
+    - inv H3. reflexivity.
+    - inv H3.
+      + etransitivity.
+        * eapply lift_term_r_sound_l. eassumption.
+        * eauto.
+      + etransitivity.
+        * eapply lift_term_r_sound_l. eassumption.
+        * eauto.
+    - inv H3. econstructor.
+    - inv H3. eapply lift_term_r_sound_l. eassumption.
+    - cbn in *. destruct inv. inv H3. eapply lift_term_r_sound_l.
+      assert (@Term.Invoke _ (Ω + Ω') _ _ (inr ω0) op (lift_term_r arg) = lift_term_r (Term.Invoke ω0 op arg)) by reflexivity.
+      erewrite <- H3.
+      eassumption.
+    - inv H3. econstructor.
+  Qed.
+
+  Definition augmentation := zip_with (λ l l', Seq (lift_stmt_l l) (lift_stmt_r l')).
   
 End Augmentation.

@@ -24,7 +24,7 @@ Section DisjointUnion.
 
   Notation "ϵ ⊎ ϵ'" := (disjoint_union ϵ ϵ').
 
-  Lemma rebind_union_distr ω σ ϵ ϵ' : rebind ω σ ϵ ⊎ ϵ' = rebind (inl ω) σ (ϵ ⊎ ϵ').
+  Lemma rebind_union_distr_l ω σ ϵ ϵ' : rebind ω σ ϵ ⊎ ϵ' = rebind (inl ω) σ (ϵ ⊎ ϵ').
   Proof.
     extensionality ω'. destruct ω'.
     - simpl. unfold rebind, disjoint_union. case_decide.
@@ -37,6 +37,21 @@ Section DisjointUnion.
     - simpl. unfold rebind, disjoint_union. case_decide.
       + dependent destruction H1.
       + reflexivity.
+  Qed.
+
+  Lemma rebind_union_distr_r ω σ ϵ ϵ' : ϵ ⊎ rebind ω σ ϵ' = rebind (inr ω) σ (ϵ ⊎ ϵ').
+  Proof.
+    extensionality ω'. destruct ω'.
+    - simpl. unfold rebind, disjoint_union. case_decide.
+      + discriminate.
+      + reflexivity.
+    - simpl. unfold rebind, disjoint_union. case_decide.
+      + subst. case_decide. dependent destruction H1.
+        * reflexivity.
+        * contradiction.
+      + case_decide. dependent destruction H2.
+        * contradiction.
+        * reflexivity.
   Qed.
 
   Lemma lookup_union_distr ω ϵ ϵ' : Map.lookup ω ϵ = Map.lookup (inl ω) (ϵ ⊎ ϵ').
@@ -77,10 +92,27 @@ Section DisjointUnion.
       + reflexivity.
   Qed.
 
+  Lemma πᵣ_rebind_comm ω σ ϵ : πᵣ (rebind (inr ω) σ ϵ) = rebind ω σ (πᵣ ϵ).
+  Proof.
+    intros. extensionality ω'. unfold rebind. case_decide.
+    - subst. cbv. destruct (EqDecision3 ω' ω').
+      + dependent destruction e. reflexivity.
+      + contradiction.
+    - cbv. destruct (EqDecision3 ω ω').
+      + contradiction.
+      + reflexivity.
+  Qed.
+
   Lemma lookup_πₗ ω ϵ : Map.lookup ω (πₗ ϵ) = Map.lookup (inl ω) ϵ.
   Proof. reflexivity. Qed.
 
+  Lemma lookup_πᵣ ω ϵ : Map.lookup ω (πᵣ ϵ) = Map.lookup (inr ω) ϵ.
+  Proof. reflexivity. Qed.
+
   Lemma rebind_l_πᵣ ω ϵ σ : πᵣ ϵ = πᵣ (rebind (inl ω) σ ϵ).
+  Proof. extensionality ω'. reflexivity. Qed.
+
+  Lemma rebind_r_πₗ ω ϵ σ : πₗ ϵ = πₗ (rebind (inr ω) σ ϵ).
   Proof. extensionality ω'. reflexivity. Qed.
 
 End DisjointUnion.
