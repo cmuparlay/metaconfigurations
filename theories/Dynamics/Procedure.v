@@ -20,7 +20,7 @@ Section Procedure.
   Variable Ω₀ : Type.
 
   (* The object being implemented *)
-  Variable ω : Ω₀.
+  Context {ω : Ω₀}.
 
   Context `{Object Π Ω₀}.
 
@@ -36,8 +36,7 @@ Section Procedure.
     body : list (Stmt.t Π Ω);
   }.
 
-  Record Implementation := 
-  {
+  Record Implementation := {
     (* Initial states for every base object *)
     initial_states : states Π Ω;
     (* Assignment from every process π and operation OP to a procedure *)
@@ -442,6 +441,8 @@ Section Augmentation.
     - inv H3. econstructor.
   Qed.
 
-  Definition augmentation := zip_with (λ l l', Seq (lift_stmt_l l) (lift_stmt_r l')).
+  Definition augment := zip_with (λ l l', Seq (lift_stmt_l l) (lift_stmt_r l')).
+
+  Lemma behavior_augmentation r 
   
 End Augmentation.

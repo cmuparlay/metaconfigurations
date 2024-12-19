@@ -31,7 +31,7 @@ Section Term.
     | Int (n : Z)
     | Bool (b : bool)
     | Unit.
-
+    
   Variant invocation : Type := Invocation (ω : Ω) (op : (type ω).(OP Π)) (arg : t).
 
 End Term.
@@ -47,6 +47,30 @@ Arguments Int {Π Ω _ _}.
 Arguments Bool {Π Ω _ _}.
 Arguments Unit {Π Ω _ _}.
 Arguments Invocation {_ _ _ _}.
+
+Inductive free {Π Ω : Type} `{Object Π Ω} : string → t Π Ω → Prop :=
+  | free_var x : free x (Var x)
+  | free_invoke x ω op arg : free x arg → free x (Invoke ω op arg)
+  | free_bop_l x op e₁ e₂ : free x e₁ → free x (Bop op e₁ e₂)
+  | free_bop_r x op e₁ e₂ : free x e₂ → free x (Bop op e₁ e₂)
+  | free_uop x op e : free x e → free x (Uop op e)
+  | free_pair_l x e₁ e₂ : free x e₁ → free x (Pair e₁ e₂)
+  | free_pair_r x e₁ e₂ : free x e₂ → free x (Pair e₁ e₂)
+  | free_proj_l x e : free x e → free x (ProjL e)
+  | free_proj_r x e : free x e → free x (ProjR e).
+
+
+Fixpoint subst {Π Ω} `{Object Π Ω} (eₓ : t Π Ω) (x : string) (e : t Π Ω) := 
+  match e with
+  | Var x => eₓ
+  | Invoke ω op arg => Invoke ω op (subst eₓ x arg)
+  | Bop op e₁ e₂ => Bop op (subst eₓ x e₁) (subst eₓ x e₂)
+  | Uop op e => Uop op (subst eₓ x e)
+  | Pair e₁ e₂ => Pair (subst eₓ x e₁) (subst eₓ x e₂)
+  | ProjL e => ProjL (subst eₓ x e)
+  | ProjR e => ProjR (subst eₓ x e)
+  | Int _ | Bool _ | Unit => e
+  end.
 
 Notation "'⊤ₑ'" := Unit.
 
