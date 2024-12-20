@@ -53,11 +53,13 @@ Section Procedure.
     | Next (f : frame) (* On next step, go to line [l] *)
     | Return (v : Value.t) (* Procedure has returned with value [v] *).
 
+  Local Open Scope dynamics_scope.
+
   Variant step_procedure (π : Π) : states Π Ω → frame → states Π Ω → signal → Prop :=
     | step_next pc pc' s ψ ψ' proc ϵ ϵ' :
       (* If [pc] points to line containing statement [s] in [proc] *)
       proc.(body) !! pc = Some s →
-      Stmt.eval π ψ ϵ s ψ' ϵ' (Goto pc') →
+      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
       step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ' (Next {| pc := pc'; registers := ψ'; proc := proc |})
     | step_implicit_return pc ψ proc ϵ :
       (* Control has fallen off end of procedure *)
@@ -65,7 +67,7 @@ Section Procedure.
       step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ (Return ⊤ᵥ)
     | step_return pc s ψ proc ϵ ϵ' v:
       proc.(body) !! pc = Some s →
-      Stmt.eval π ψ ϵ s ψ ϵ' (Stmt.Return v) →
+      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
       step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ (Return v).
 
   Record configuration := {
@@ -181,11 +183,13 @@ Section Augmentation.
     | Term.Bool b => Term.Bool b
     | Term.Unit => Term.Unit
     end.
+  
+  Local Open Scope dynamics_scope.
 
   Lemma lift_term_l_complete :
     ∀ e π ψ (ϵ₁ ϵ₁' : states Π Ω) v (ϵ₂ : states Π Ω'),
-      Term.eval π ψ ϵ₁ e ϵ₁' v →
-        Term.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_term_l e) (disjoint_union ϵ₁' ϵ₂) v.
+      ⟨ π , ψ , ϵ₁ , e ⟩ ⇓ₑ ⟨ ϵ₁' , v ⟩ →
+        ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_l e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁' ϵ₂ , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
     rewrite rebind_union_distr_l. econstructor.
@@ -195,8 +199,8 @@ Section Augmentation.
 
   Lemma lift_term_l_sound_l :
     ∀ e π ψ ϵ v ϵ',
-      Term.eval π ψ ϵ (lift_term_l e) ϵ' v →
-        Term.eval π ψ (πₗ ϵ) e (πₗ ϵ') v.
+      ⟨ π , ψ , ϵ , lift_term_l e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
+        ⟨ π , ψ , πₗ ϵ , e ⟩ ⇓ₑ ⟨ πₗ ϵ' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
     rewrite πₗ_rebind_comm. econstructor.
@@ -209,7 +213,7 @@ Section Augmentation.
 
   Lemma lift_term_l_sound_r :
     ∀ e π ψ ϵ v ϵ',
-      Term.eval π ψ ϵ (lift_term_l e) ϵ' v → πᵣ ϵ = πᵣ ϵ'.
+      ⟨ π , ψ , ϵ , lift_term_l e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ → πᵣ ϵ = πᵣ ϵ'.
   Proof.
     induction e; intros; simpl in *; inv H3; intuition.
     - apply IHe in H9. subst. simpl in *.
@@ -234,9 +238,9 @@ Section Augmentation.
 
   Lemma lift_stmt_l_complete :
     ∀ s π ψ ψ' (ϵ₁ ϵ₁' : states Π Ω) sig,
-      Stmt.eval π ψ ϵ₁ s ψ' ϵ₁' sig →
+      ⟨ π , ψ , ϵ₁ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ₁' , sig ⟩ →
         ∀ ϵ₂,
-          Stmt.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_stmt_l s) ψ' (disjoint_union ϵ₁' ϵ₂) sig.
+          ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , disjoint_union ϵ₁' ϵ₂ , sig ⟩.
   Proof.
     intros. generalize dependent ϵ₂. induction H3; intros.
     - econstructor.
@@ -255,8 +259,8 @@ Section Augmentation.
 
   Lemma lift_stmt_l_sound_l :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      Stmt.eval π ψ ϵ (lift_stmt_l s) ψ' ϵ' sig →
-        Stmt.eval π ψ (πₗ ϵ) s ψ' (πₗ ϵ') sig.
+      ⟨ π , ψ , ϵ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ →
+        ⟨ π , ψ , πₗ ϵ , s ⟩ ⇓ₛ ⟨ ψ' , πₗ ϵ' , sig ⟩.
   Proof.
     induction s; intros.
     - inv H3; econstructor; eauto.
@@ -276,7 +280,7 @@ Section Augmentation.
 
   Lemma lift_stmt_l_sound_r :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      Stmt.eval π ψ ϵ (lift_stmt_l s) ψ' ϵ' sig → πᵣ ϵ = πᵣ ϵ'.
+      ⟨ π , ψ , ϵ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ → πᵣ ϵ = πᵣ ϵ'.
   Proof.
     induction s; intros.
     - inv H3.
@@ -302,10 +306,6 @@ Section Augmentation.
     - inv H3. econstructor.
   Qed.
 
-  (* Definition lift_term_r (e : Term.t Π Ω) :  Term.t Π (Ω + Ω').
-  Proof.
-  Defined. *)
-
   Fixpoint lift_term_r (e : Term.t Π Ω') : Term.t Π (Ω + Ω') :=
     match e with
     | Var x => Var x
@@ -322,8 +322,8 @@ Section Augmentation.
 
   Lemma lift_term_r_complete :
     ∀ e π ψ (ϵ₂ ϵ₂' : states Π Ω') v (ϵ₁ : states Π Ω),
-      Term.eval π ψ ϵ₂ e ϵ₂' v →
-        Term.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_term_r e) (disjoint_union ϵ₁ ϵ₂') v.
+      ⟨ π , ψ , ϵ₂ , e ⟩ ⇓ₑ ⟨ ϵ₂' , v ⟩ →
+        ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_r e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁ ϵ₂' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
     rewrite rebind_union_distr_r. econstructor.
@@ -333,8 +333,8 @@ Section Augmentation.
 
   Lemma lift_term_r_sound_r :
     ∀ e π ψ ϵ v ϵ',
-      Term.eval π ψ ϵ (lift_term_r e) ϵ' v →
-        Term.eval π ψ (πᵣ ϵ) e (πᵣ ϵ') v.
+      ⟨ π , ψ , ϵ , lift_term_r e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
+        ⟨ π , ψ , πᵣ ϵ , e ⟩ ⇓ₑ ⟨ πᵣ ϵ' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H3; try (econstructor; eauto).
     rewrite πᵣ_rebind_comm. econstructor.
@@ -347,7 +347,7 @@ Section Augmentation.
 
   Lemma lift_term_r_sound_l :
     ∀ e π ψ ϵ v ϵ',
-      Term.eval π ψ ϵ (lift_term_r e) ϵ' v → πₗ ϵ = πₗ ϵ'.
+      ⟨ π , ψ , ϵ , lift_term_r e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ → πₗ ϵ = πₗ ϵ'.
   Proof.
     induction e; intros; simpl in *; inv H3; intuition.
     - apply IHe in H9. subst. simpl in *.
@@ -373,9 +373,9 @@ Section Augmentation.
 
   Lemma lift_stmt_r_complete :
     ∀ s π ψ ψ' (ϵ₂ ϵ₂' : states Π Ω') sig,
-      Stmt.eval π ψ ϵ₂ s ψ' ϵ₂' sig →
+      ⟨ π , ψ , ϵ₂ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ₂' , sig ⟩ →
         ∀ ϵ₁,
-          Stmt.eval π ψ (disjoint_union ϵ₁ ϵ₂) (lift_stmt_r s) ψ' (disjoint_union ϵ₁ ϵ₂') sig.
+          ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , disjoint_union ϵ₁ ϵ₂' , sig ⟩.
   Proof.
     intros. generalize dependent ϵ₁. induction H3; intros.
     - econstructor.
@@ -394,8 +394,8 @@ Section Augmentation.
 
   Lemma lift_stmt_r_sound_r :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      Stmt.eval π ψ ϵ (lift_stmt_r s) ψ' ϵ' sig →
-        Stmt.eval π ψ (πᵣ ϵ) s ψ' (πᵣ ϵ') sig.
+      ⟨ π , ψ , ϵ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ →
+        ⟨ π , ψ , πᵣ ϵ , s ⟩ ⇓ₛ ⟨ ψ' , πᵣ ϵ' , sig ⟩.
   Proof.
     induction s; intros.
     - inv H3; econstructor; eauto.
@@ -415,7 +415,7 @@ Section Augmentation.
 
   Lemma lift_stmt_r_sound_l :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      Stmt.eval π ψ ϵ (lift_stmt_r s) ψ' ϵ' sig → πₗ ϵ = πₗ ϵ'.
+      ⟨ π , ψ , ϵ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ → πₗ ϵ = πₗ ϵ'.
   Proof.
     induction s; intros.
     - inv H3.
@@ -442,7 +442,5 @@ Section Augmentation.
   Qed.
 
   Definition augment := zip_with (λ l l', Seq (lift_stmt_l l) (lift_stmt_r l')).
-
-  Lemma behavior_augmentation r 
   
 End Augmentation.
