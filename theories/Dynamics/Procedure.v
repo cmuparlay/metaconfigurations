@@ -465,7 +465,7 @@ Section Augmentation.
   Variant status :=
     | Idle
     | Pending (op : (type ω).(OP)) (arg : Value.t)
-    | Linearized (op : (type ω).(OP)) (arg : Value.t) (res : Value.t).
+    | Linearized (res : Value.t).
 
   Variant pending : status → Prop := pending_intro op arg : pending (Pending op arg).
 
@@ -481,6 +481,8 @@ Section Augmentation.
 
   Definition invoke (f : Π → status) π op arg := Map.rebind π (Pending op arg) f.
 
+  Definition ret (f : Π → status) π res := Map.rebind π (Linearized res) f.
+
   Inductive δ_many : (type ω).(Σ) → (Π → status) → list Π → (type ω).(Σ) → (Π → status) → Prop :=
     | δ_many_refl σ f : δ_many σ f [] σ f
     | δ_many_trans f σ π op arg σ' res πs σ'' f' :
@@ -488,7 +490,7 @@ Section Augmentation.
       f π = Pending op arg →
       (* And (σ', res) ∈ δ(σ, π, op, arg) *)
       (type ω).(δ) σ π op arg σ' res →
-      δ_many σ' (Map.rebind π (Linearized op arg res) f) πs σ'' f' →
+      δ_many σ' (Map.rebind π (Linearized res) f) πs σ'' f' →
       δ_many σ f (π :: πs) σ'' f'.
 
   Variant evolve_inv (C : meta_configuration) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration :=
@@ -502,17 +504,42 @@ Section Augmentation.
       (* Then (σ', f') is in the resulting metaconfiguration *)
       evolve_inv C op π arg σ' f'.
 
-  Variant transition_meta_config : meta_configuration → Π → (type ω).(OP) → Value.t → meta_configuration → Value.t → Prop :=
-    | transition_evolve_inv C π op arg : transition_meta_config C π op arg (evolve_inv C op π arg) Value.Unit.
+  Variant evolve (C : meta_configuration) : meta_configuration :=
+    evolve_intro σ f πs σ' f' :
+      (* If (σ, f) ∈ C *)
+      C σ f →
+      (* If every process in permutation [πs] is pending *)
+      Forall (λ π, pending (f π)) πs → 
+      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+      δ_many σ f πs σ' f' →
+      (* Then (σ', f') is in the resulting metaconfiguration *)
+      evolve C σ' f'.
 
-  Variant meta_config_operations := EvolveInv | Evolve | EvolveRet.
+  Variant evolve_ret (C : meta_configuration) (π : Π) (res : Value.t) : meta_configuration :=
+    evolve_ret_intro σ f πs σ' f' :
+      f π = Linearized res →
+      (* If (σ, f) ∈ C *)
+      C σ f →
+      (* If every process in permutation [πs] is pending *)
+      Forall (λ π, pending (f π)) πs → 
+      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+      δ_many σ (ret f π res) πs σ' f' →
+      (* Then (σ', f') is in the resulting metaconfiguration *)
+      evolve_ret C π res σ' f'.
+
+  Variant meta_config_operation := EvolveInv (op : (type ω).(OP)) | Evolve | EvolveRet.
+
+  Variant transition_meta_config (C : meta_configuration) (π : Π) : meta_config_operation → Value.t → meta_configuration → Value.t → Prop :=
+    | transition_evolve_inv op arg : transition_meta_config C π (EvolveInv op) arg (evolve_inv C op π arg) Value.Unit
+    | transition_evolve : transition_meta_config C π Evolve Value.Unit (evolve C) Value.Unit
+    | transition_evolve_ret arg : transition_meta_config C π EvolveRet arg (evolve_ret C π arg) Value.Unit.
 
   Instance object_meta_config : Object Π meta_configurations :=
     λ M, 
       {|
         Σ := (type ω).(Σ) → (Π → status) → Prop;
-        OP := meta_config_operations * (type ω).(OP);
-        δ σ π op v σ' res := False;
+        OP := meta_config_operation;
+        δ := transition_meta_config;
       |}.
 
 End Augmentation.
