@@ -2,7 +2,6 @@ From Metaconfigurations Require Import
   Map Syntax.Term Syntax.Stmt
   Syntax.Value Dynamics.Term Object.
 From stdpp Require Import base stringmap.
-Require Import Coq.ZArith.BinInt.
 
 Variant signal :=
   | Continue

@@ -71,7 +71,7 @@ Module Queue.
                | Dequeue => unit
                end;
       RES := res;
-      (* δ := fun σ π op arg =>
+      (* δ := fun Σ op arg =>
              match op with
              | Enqueue =>
                 (σ ++ [ arg ], None)
@@ -81,7 +81,7 @@ Module Queue.
                   | x :: xs => (xs, Some x)
                   end
              end; *)
-      δ := fun σ π op =>
+      δ := fun Σ op =>
              match op as o return arg o -> states * res with
              | Enqueue =>
                 fun arg =>
@@ -99,7 +99,7 @@ End Queue. *)
 
 (* Record object (Π : Type) := {
   type : object_type Π;
-  state : type.(Σ Π);
+  state : type.(Σ);
 }. *)
 
 
@@ -109,7 +109,7 @@ End Queue. *)
 
 Class Object (Value : Type) (Π : Type) (Ω : Type) := {
   type : Ω → object_type Value Π;
-  (* state : ∀ (ω : Ω), (type ω).(Σ Π) *)
+  (* state : ∀ (ω : Ω), (type ω).(Σ) *)
 }.
 
 Class Process (Π : Type) := {
@@ -335,7 +335,7 @@ End Processes. *)
 
 (* Record configuration (Ω : Type) (Π : Type) (object_types : Ω → object_type Π) (registers : Π → Type) := {
   (* Assignment of state to every object *)
-  object_states : ∀ (ω : Ω), (object_types ω).(Σ Π);
+  object_states : ∀ (ω : Ω), (object_types ω).(Σ);
   (* Assignment of values to every private register *)
   register_values : ∀ (π : Π), register (registers π) → nat;
 }.

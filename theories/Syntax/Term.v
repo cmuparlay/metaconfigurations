@@ -22,7 +22,7 @@ Section Term.
 
   Inductive t : Type :=
     | Var (x : string)
-    | Invoke (ω : Ω) (op : (type ω).(OP Π)) (arg : t)
+    | Invoke (ω : Ω) (op : (type ω).(OP)) (arg : t)
     | Bop (op : bop) (e₁ : t) (e₂ : t)
     | Uop (op : uop) (e : t)
     | Pair (e₁ : t) (e₂ : t)
@@ -32,7 +32,7 @@ Section Term.
     | Bool (b : bool)
     | Unit.
     
-  Variant invocation : Type := Invocation (ω : Ω) (op : (type ω).(OP Π)) (arg : t).
+  Variant invocation : Type := Invocation (ω : Ω) (op : (type ω).(OP)) (arg : t).
 
 End Term.
 
@@ -58,7 +58,6 @@ Inductive free {Π Ω : Type} `{Object Π Ω} : string → t Π Ω → Prop :=
   | free_pair_r x e₁ e₂ : free x e₂ → free x (Pair e₁ e₂)
   | free_proj_l x e : free x e → free x (ProjL e)
   | free_proj_r x e : free x e → free x (ProjR e).
-
 
 Fixpoint subst {Π Ω} `{Object Π Ω} (eₓ : t Π Ω) (x : string) (e : t Π Ω) := 
   match e with

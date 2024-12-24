@@ -1,13 +1,12 @@
 From Metaconfigurations Require Import 
   Map Syntax.Term Syntax.Value Object.
 From stdpp Require Import base stringmap decidable.
-Require Import Coq.ZArith.BinInt.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Program.Equality.
 
 Global Declare Scope dynamics_scope.
 
-Definition states (Π Ω : Type) `{Object Π Ω} := Map.dependent Ω (Σ Π ∘ type).
+Definition states (Π Ω : Type) `{Object Π Ω} := Map.dependent Ω (Σ ∘ type).
 
 Section DisjointUnion.
 
@@ -134,11 +133,11 @@ Variant eval_unop : Term.uop → Value.t → Value.t → Set :=
     | 
     end. *)
 
-(* (ω : Ω) (op : (type ω).(OP Π)) (arg : (type ω).(ARG Π) *)
+(* (ω : Ω) (op : (type ω).(OP)) (arg : (type ω).(ARG Π) *)
 
 Variant eval_inv {Π Ω} `{Object Π Ω} π ϵ ω op arg σ res :=
   | eval_inv_intro :
-    (type ω).(δ Π) (Map.lookup ω ϵ) π op arg σ res →
+    (type ω).(δ) (Map.lookup ω ϵ) π op arg σ res →
     eval_inv π ϵ ω op arg σ res.
 
 Reserved Notation "⟨ π , Ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" (at level 80, no associativity).
