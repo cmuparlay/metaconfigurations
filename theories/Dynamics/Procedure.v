@@ -40,6 +40,20 @@ Record Implementation (Π Ω : Type) {Ω} `{Object Π Ω₀, Object Π Ω} (ω :
   procedures : (type ω).(OP) → procedure Π Ω;
 }.
 
+Definition atomic_implementation {Π Ω} `{Object Π Ω} (ϵ : states Π Ω) (ω : Ω) : Implementation Π Ω ω :=
+  {|
+    initial_states := ϵ;
+    procedures op :=
+      {|
+        param := "arg";
+        body :=
+          [
+            Assign "r" (Term.Invoke ω op (Var "arg"));
+            Syntax.Stmt.Return (Var "r")
+          ]
+      |}
+  |}.
+
 Arguments initial_states : default implicits.
 Arguments procedures : default implicits.
 
@@ -162,7 +176,7 @@ Section Run.
         Intermediate
         {| tracker := evolve tracker; outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
     | step_response tracker outstanding π ϵ ϵ' f v :
-    (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
+      (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
       outstanding !! π = Some f →
       step_procedure π ϵ f ϵ' (Return v) →
       step
