@@ -145,14 +145,13 @@ Section Run.
     |}.
 
   Variant step : configuration → Π → line → configuration → Prop :=
-    | step_invoke tracker outstanding π ϵ ϵ' op arg f :
+    | step_invoke tracker outstanding π ϵ op arg :
       outstanding !! π = None →
-      step_procedure π ϵ (initial_frame op arg) ϵ' (Next f) →
       step 
         {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
         π
         (Invoke op arg)
-        {| tracker := evolve_inv tracker op π arg; outstanding := <[π := f]>outstanding; ϵ := ϵ' |}
+        {| tracker := evolve_inv tracker op π arg; outstanding := <[π := initial_frame op arg]>outstanding; ϵ := ϵ |}
     | step_intermediate tracker outstanding π ϵ ϵ' f f' :
       (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
       outstanding !! π = Some f →
