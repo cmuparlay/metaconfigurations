@@ -65,33 +65,74 @@ Variant step_procedure {Π Ω} `{Object Π Ω} (π : Π) : states Π Ω → fram
     ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
     step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ (Return v).
 
-Record configuration (Π Ω : Type) `{Countable Π, Object Π Ω} := {
-  outstanding : gmap Π (frame Π Ω);
-  ϵ : states Π Ω;
-}.
-
-Arguments outstanding {_ _ _ _ _ _ _}.
-Arguments ϵ {_ _ _ _ _ _ _}.
-
-Variant line Π {Ω} `{Object Π Ω} (ω : Ω) :=
-  | Invoke (op : (type ω).(OP)) (arg : Value.t)
-  | Intermediate
-  | Response (resp : Value.t).
-
-Arguments Invoke {_ _ _ _ _}.
-Arguments Intermediate {_ _ _ _ _}.
-Arguments Response {_ _ _ _ _}.
-
-Inductive run Π {Ω} `{Countable Π, Object Π Ω} (ω : Ω) :=
-  | Initial (c : configuration Π Ω)
-  | Step (r : run Π ω) (π : Π) (l : line Π ω) (c : configuration Π Ω).
-
-Arguments Initial {_ _ _ _ _ _ _}.
-Arguments Step {_ _ _ _ _ _ _}.
-
 Section Run.
 
   Context {Π Ω₀ Ω} `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω}.
+
+  Variant status :=
+    | Idle
+    | Pending (op : (type ω).(OP)) (arg : Value.t)
+    | Linearized (res : Value.t).
+
+  (* A meta configuration relates states of the implemented object and the status of each process *)
+  Definition meta_configuration := (type ω).(Σ) → (Π → status) → Prop.
+
+  Inductive δ_many : (type ω).(Σ) → (Π → status) → list Π → (type ω).(Σ) → (Π → status) → Prop :=
+    | δ_many_refl σ f : δ_many σ f [] σ f
+    | δ_many_trans f σ π op arg σ' res πs σ'' f' :
+      (* if [π] has invoked [op(arg)], but not returned *)
+      f π = Pending op arg →
+      (* And (σ', res) ∈ δ(σ, π, op, arg) *)
+      (type ω).(δ) σ π op arg σ' res →
+      δ_many σ' (Map.rebind π (Linearized res) f) πs σ'' f' →
+      δ_many σ f (π :: πs) σ'' f'.
+
+  Definition invoke (f : Π → status) π op arg := Map.rebind π (Pending op arg) f.
+
+  Definition ret (f : Π → status) π res := Map.rebind π (Linearized res) f.
+
+  Variant evolve_inv (C : meta_configuration) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration :=
+    evolve_inv_intro σ f πs σ' f' :
+      (* If (σ, f) ∈ C *)
+      C σ f →
+      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+      δ_many σ (invoke f π op arg) πs σ' f' →
+      (* Then (σ', f') is in the resulting metaconfiguration *)
+      evolve_inv C op π arg σ' f'.
+
+  Variant evolve (C : meta_configuration) : meta_configuration :=
+    evolve_intro σ f πs σ' f' :
+      (* If (σ, f) ∈ C *)
+      C σ f →
+      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+      δ_many σ f πs σ' f' →
+      (* Then (σ', f') is in the resulting metaconfiguration *)
+      evolve C σ' f'.
+
+  Variant evolve_ret (C : meta_configuration) (π : Π) (res : Value.t) : meta_configuration :=
+    evolve_ret_intro σ f πs σ' f' :
+      f π = Linearized res →
+      (* If (σ, f) ∈ C *)
+      C σ f →
+      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+      δ_many σ (ret f π res) πs σ' f' →
+      (* Then (σ', f') is in the resulting metaconfiguration *)
+      evolve_ret C π res σ' f'.
+
+  Record configuration := {
+    tracker : meta_configuration;
+    outstanding : gmap Π (frame Π Ω);
+    ϵ : states Π Ω;
+  }.
+
+  Variant line :=
+    | Invoke (op : (type ω).(OP)) (arg : Value.t)
+    | Intermediate
+    | Response (resp : Value.t).
+
+  Inductive run :=
+    | Initial (c : configuration)
+    | Step (r : run) (π : Π) (l : line) (c : configuration).
 
   Variable impl : Implementation Π Ω ω.
 
@@ -103,21 +144,33 @@ Section Run.
       proc := proc;
     |}.
 
-  Variant step : configuration Π Ω → Π → line Π ω → configuration Π Ω → Prop :=
-    | step_invoke outstanding π ϵ ϵ' op arg f :
+  Variant step : configuration → Π → line → configuration → Prop :=
+    | step_invoke tracker outstanding π ϵ ϵ' op arg f :
       outstanding !! π = None →
       step_procedure π ϵ (initial_frame op arg) ϵ' (Next f) →
-      step {| outstanding := outstanding; ϵ := ϵ |} π (Invoke op arg) {| outstanding := <[π := f]>outstanding; ϵ := ϵ' |}
-    | step_intermediate outstanding π ϵ ϵ' f f' :
-    (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
+      step 
+        {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+        π
+        (Invoke op arg)
+        {| tracker := evolve_inv tracker op π arg; outstanding := <[π := f]>outstanding; ϵ := ϵ' |}
+    | step_intermediate tracker outstanding π ϵ ϵ' f f' :
+      (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
       outstanding !! π = Some f →
       step_procedure π ϵ f ϵ' (Next f') →
-      step {| outstanding := outstanding; ϵ := ϵ |} π Intermediate {| outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
-    | step_response outstanding π ϵ ϵ' f v :
+      step
+        {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+        π
+        Intermediate
+        {| tracker := evolve tracker; outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
+    | step_response tracker outstanding π ϵ ϵ' f v :
     (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
       outstanding !! π = Some f →
       step_procedure π ϵ f ϵ' (Return v) →
-      step {| outstanding := outstanding; ϵ := ϵ |} π (Response v) {| outstanding := delete π outstanding; ϵ := ϵ' |}.
+      step
+        {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+        π
+        (Response v)
+        {| tracker := evolve_ret tracker π v; outstanding := delete π outstanding; ϵ := ϵ' |}.
 
   Definition final (r : run Π ω) :=
     match r with
@@ -450,14 +503,6 @@ Section LiftR.
 
 End LiftR.
 
-(* Definition augment {Π Ω₀ Ω Ω' : Type} `{Object Π Ω₀, Object Π Ω, Object Π Ω'} {ω : Ω₀} (impl : Implementation Π Ω ω) (lines : (type ω).(OP) → list (Stmt.t Π Ω')) : Implementation Π (Ω + Ω') ω :=
-  {|
-    param := impl.(param)
-  |}.
-
-
-Definition augment {Π Ω Ω' : Type} `{Object Π Ω, Object Π Ω'} : list (Stmt.t Π Ω) → list (Stmt.t Π Ω') → list (Stmt.t Π (Ω + Ω')) :=
-  zip_with (λ l l', Seq (lift_stmt_l Ω' l) (lift_stmt_r Ω l')). *)
 
 Section Augmentation.
 
