@@ -46,7 +46,12 @@ Arguments procedures : default implicits.
 Local Open Scope dynamics_scope.
 
 Variant step_procedure {Π Ω} `{Object Π Ω} (π : Π) : states Π Ω → frame Π Ω → states Π Ω → signal Π Ω → Prop :=
-  | step_next pc pc' s ψ ψ' proc ϵ ϵ' :
+  | step_continue pc s ψ ψ' proc ϵ ϵ' :
+    (* If [pc] points to line containing statement [s] in [proc] *)
+    proc.(body) !! pc = Some s →
+    ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Continue ⟩ →
+    step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ' (Next {| pc := S pc; registers := ψ'; proc := proc |})
+  | step_goto pc pc' s ψ ψ' proc ϵ ϵ' :
     (* If [pc] points to line containing statement [s] in [proc] *)
     proc.(body) !! pc = Some s →
     ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
