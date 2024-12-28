@@ -6,7 +6,7 @@ From Metaconfigurations Require Import
   Dynamics.Term Object.
 
 From Metaconfigurations.Dynamics Require Import Term Stmt.
-From stdpp Require Import base list stringmap gmap fin_maps.
+From stdpp Require Import base decidable list stringmap gmap fin_maps.
 
 Record procedure (Π Ω : Type) `{Object Π Ω} := {
   param : string;
@@ -33,27 +33,15 @@ Variant signal (Π Ω : Type) `{Object Π Ω} :=
 Arguments Next {_ _ _ _}.
 Arguments Return {_ _ _ _}.
 
-Record Implementation (Π Ω : Type) {Ω} `{Object Π Ω₀, Object Π Ω} (ω : Ω₀) := {
+Record Implementation (Π Ω : Type) {Ω₀} `{Object Π Ω₀, Object Π Ω} (ω : Ω₀) := {
+  initial_state : (type ω).(Σ);
   (* Initial states for every base object *)
   initial_states : states Π Ω;
   (* Assignment from every process π and operation OP to a procedure *)
   procedures : (type ω).(OP) → procedure Π Ω;
 }.
 
-Definition atomic_implementation {Π Ω} `{Object Π Ω} (ϵ : states Π Ω) (ω : Ω) : Implementation Π Ω ω :=
-  {|
-    initial_states := ϵ;
-    procedures op :=
-      {|
-        param := "arg";
-        body :=
-          [
-            Assign "r" (Term.Invoke ω op (Var "arg"));
-            Syntax.Stmt.Return (Var "r")
-          ]
-      |}
-  |}.
-
+Arguments initial_state : default implicits.
 Arguments initial_states : default implicits.
 Arguments procedures : default implicits.
 
@@ -79,139 +67,308 @@ Variant step_procedure {Π Ω} `{Object Π Ω} (π : Π) : states Π Ω → fram
     ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
     step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ (Return v).
 
-Section Run.
+Definition singleton_states `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : states Π (sig (eq ω)).
+Proof.
+  unfold states, dependent. intros [x P]. subst. simpl. exact ϵ₀.
+Qed.
 
-  Context {Π Ω₀ Ω} `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω}.
+(* Definition atomic_implementation {Π Ω} `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : Implementation Π (sig (eq ω)) ω :=
+  {|
+    initial_state := ϵ₀;
+    initial_states := singleton_states ω ϵ₀;
+    procedures op :=
+      {|
+        param := "arg";
+        body :=
+          [
+            Assign "r" (Term.Invoke (exist (eq ω) ω (eq_refl ω)) op (Var "arg"));
+            Syntax.Stmt.Return (Var "r")
+          ]
+      |}
+  |}. *)
 
-  Variant status :=
-    | Idle
-    | Pending (op : (type ω).(OP)) (arg : Value.t)
-    | Linearized (res : Value.t).
+Definition atomic_implementation {Π Ω} `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : Implementation Π (sing ω) ω.
+Proof.
+  split.
+  - exact ϵ₀.
+  - unfold states, dependent. intros. destruct k. simpl. exact ϵ₀.
+  - intros op. split.
+    + (* param *) exact "arg".
+    + (* body *) exact
+      [
+        Assign "r" (Term.Invoke (Sing ω) op (Var "arg"));
+        Syntax.Stmt.Return (Var "r")
+      ].
+Defined.
 
-  (* A meta configuration relates states of the implemented object and the status of each process *)
-  Definition meta_configuration := (type ω).(Σ) → (Π → status) → Prop.
+Variant line Π {Ω} `{Object Π Ω} (ω : Ω) :=
+  | Invoke (op : (type ω).(OP)) (arg : Value.t)
+  | Intermediate
+  | Response (resp : Value.t).
 
-  Inductive δ_many : (type ω).(Σ) → (Π → status) → list Π → (type ω).(Σ) → (Π → status) → Prop :=
-    | δ_many_refl σ f : δ_many σ f [] σ f
-    | δ_many_trans f σ π op arg σ' res πs σ'' f' :
-      (* if [π] has invoked [op(arg)], but not returned *)
+Arguments Invoke {_ _ _ _ _}.
+Arguments Intermediate {_ _ _ _ _}.
+Arguments Response {_ _ _ _ _}.
+
+Variant status Π {Ω} `{Object Π Ω} (ω : Ω) :=
+  | Idle
+  | Pending (op : (type ω).(OP)) (arg : Value.t)
+  | Linearized (res : Value.t).
+
+Arguments Idle {_ _ _ _ _}.
+Arguments Pending {_ _ _ _ _}.
+Arguments Linearized {_ _ _ _ _}.
+
+(* A meta configuration relates states of the implemented object and the status of each process *)
+Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
+
+Inductive δ_many {Π Ω} `{EqDecision Π, Object Π Ω} (ω : Ω) : (type ω).(Σ) → (Π → status Π ω) → list Π → (type ω).(Σ) → (Π → status Π ω) → Prop :=
+  | δ_many_refl σ f : δ_many ω σ f [] σ f
+  | δ_many_trans (f f' : Π → status Π ω) (σ σ' σ'' : (type ω).(Σ)) (π : Π) (op : (type ω).(OP)) (arg : Value.t) (res : Value.t) (πs : list Π) :
+    (* if [π] has invoked [op(arg)], but not returned *)
+    f π = Pending op arg →
+    (* And (σ', res) ∈ δ(σ, π, op, arg) *)
+    (type ω).(δ) σ π op arg σ' res →
+    δ_many ω σ' (Map.rebind π (Linearized res) f) πs σ'' f' →
+    δ_many ω σ f (π :: πs) σ'' f'.
+
+Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (op : (type ω).(OP)) (arg : Value.t) : Π → status Π ω :=
+  Map.rebind π (Pending op arg) f.
+
+Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (res : Value.t) := Map.rebind π (Linearized res) f.
+
+Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration Π ω :=
+  evolve_inv_intro σ f πs σ' f' :
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many ω σ (invoke f π op arg) πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve_inv C op π arg σ' f'.
+
+Variant evolve `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) : meta_configuration Π ω :=
+  evolve_intro σ f πs σ' f' :
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many ω σ f πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve C σ' f'.
+
+Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (π : Π) (res : Value.t) : meta_configuration Π ω :=
+  evolve_ret_intro σ f πs σ' f' :
+    f π = Linearized res →
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many ω σ (ret f π res) πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve_ret C π res σ' f'.
+
+(* Definition atomic_run {Π Ω} `{Countable Π, Object Π Ω} (ϵ : states Π Ω) (ω : Ω) (l : line ω) : list (Π * line) :=
+  Run (atomic_implementation ϵ ω). *)
+
+Inductive run (C Π : Type) `{Object Π Ω} (ω : Ω) :=
+  | Initial (c : C)
+  | Step (r : run C Π ω) (π : Π) (l : line Π ω) (c : C).
+
+Arguments Initial {_ _ _ _ _ _}.
+Arguments Step {_ _ _ _ _ _}.
+
+Inductive snoc_list (A : Type) : Type :=
+  | Nil
+  | Snoc (h : snoc_list A) (t : A).
+
+Arguments Nil {_}.
+Arguments Snoc {_}.
+
+Notation "⟨⟩" := Nil (format "⟨⟩") : list_scope.
+Notation "⟨ x ⟩" := (Snoc Nil x) : list_scope.
+Notation "⟨ x ; y ; .. ; z ⟩" := (Snoc .. (Snoc (Snoc Nil x) y) .. z) : list_scope.
+
+Infix ",," := Snoc (at level 50, left associativity).
+
+Fixpoint behavior {C Π : Type} `{Object Π Ω} {ω : Ω} (r : run C Π ω) : snoc_list (Π * line Π ω) :=
+  match r with
+  | Initial _ => ⟨⟩
+  | Step r π l c =>
+      match l with
+      | Invoke _ _ | Response _ => behavior r ,, (π, l)
+      | Intermediate => behavior r
+      end
+  end.
+
+Inductive subsequence {A : Type} : snoc_list A → snoc_list A → Prop :=
+  | subsequence_nil l : subsequence ⟨⟩ l
+  | subsequence_cons h h' t : subsequence h h' → subsequence (h ,, t) (h' ,, t).
+
+Definition final {C Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (r : run C Π ω) :=
+  match r with
+  | Initial c | Step _ _ _ c => c
+  end.
+
+Definition sem (C Π : Type) `{Countable Π, Object Π Ω} (ω : Ω) := C → Π → line Π ω → C → Prop.
+
+Inductive Run {C Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (c₀ : C) (step : sem C Π ω) : run C Π ω → Prop :=
+  | RunInitial : Run c₀ step (Initial c₀)
+  | RunStep r π l c : Run c₀ step r → step (final r) π l c → Run c₀ step (Step r π l c).
+
+Module Atomic.
+  Definition configuration (Π : Type) `{Countable Π, Object Π Ω} (ω : Ω) := ((type ω).(Σ) * (Π → status Π ω))%type.
+
+  Definition run (Π : Type) `{Countable Π, Object Π Ω} (ω : Ω) := run (configuration Π ω) Π ω.
+
+  Inductive step `{Countable Π, Object Π Ω} {ω : Ω} : configuration Π ω → Π → line Π ω → configuration Π ω → Prop :=
+    | step_invoke σ f π op arg :
+      (* If [π] has no outstanding operations*)
+      f π = Idle →
+      (* Then π can invoke an operation on the shared object *)
+      step (σ, f) π (Invoke op arg) (σ, Map.rebind π (Pending op arg) f)
+    | step_linearize σ σ' f π op arg res :
+      (* If [π] has invoked [op(arg)] but not yet responded *)
       f π = Pending op arg →
       (* And (σ', res) ∈ δ(σ, π, op, arg) *)
       (type ω).(δ) σ π op arg σ' res →
-      δ_many σ' (Map.rebind π (Linearized res) f) πs σ'' f' →
-      δ_many σ f (π :: πs) σ'' f'.
+      (* Then [op(arg)] can linearize with value [res] and state [σ'] *)
+      step (σ, f) π Intermediate (σ', Map.rebind π (Linearized res) f)
+    | step_response σ f π v :
+      f π = Linearized v →
+      step (σ, f) π (Response v) (σ, Map.rebind π Idle f).
 
-  Definition invoke (f : Π → status) π op arg := Map.rebind π (Pending op arg) f.
+    Definition Run {Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (c₀ : configuration Π ω) : run Π ω → Prop := Run c₀ step.
 
-  Definition ret (f : Π → status) π res := Map.rebind π (Linearized res) f.
+End Atomic.
 
-  Variant evolve_inv (C : meta_configuration) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration :=
-    evolve_inv_intro σ f πs σ' f' :
-      (* If (σ, f) ∈ C *)
-      C σ f →
-      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-      δ_many σ (invoke f π op arg) πs σ' f' →
-      (* Then (σ', f') is in the resulting metaconfiguration *)
-      evolve_inv C op π arg σ' f'.
+  (* | idle_initial c : idle π (Initial c)
+  | idle_step_response r c v : idle π (Step r π (Response v) c)
+  | idle_step_intermediate r π' c : idle π r → idle π (Step r π' Intermediate c)
+  | idle_step_invoke : idle π r → π ≠ π' → idle π () *)
 
-  Variant evolve (C : meta_configuration) : meta_configuration :=
-    evolve_intro σ f πs σ' f' :
-      (* If (σ, f) ∈ C *)
-      C σ f →
-      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-      δ_many σ f πs σ' f' →
-      (* Then (σ', f') is in the resulting metaconfiguration *)
-      evolve C σ' f'.
+Record configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
+  tracker : meta_configuration Π ω;
+  outstanding : gmap Π (frame Π Ω);
+  ϵ : states Π Ω;
+}.
 
-  Variant evolve_ret (C : meta_configuration) (π : Π) (res : Value.t) : meta_configuration :=
-    evolve_ret_intro σ f πs σ' f' :
-      f π = Linearized res →
-      (* If (σ, f) ∈ C *)
-      C σ f →
-      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-      δ_many σ (ret f π res) πs σ' f' →
-      (* Then (σ', f') is in the resulting metaconfiguration *)
-      evolve_ret C π res σ' f'.
+(* Definition outstanding_related `{Countable Π, Object Π Ω} (m : gmap Π (frame Π Ω)) (f : Π → status Π Ω) (π : Π) : Prop.  *)
 
-  Record configuration := {
-    tracker : meta_configuration;
-    outstanding : gmap Π (frame Π Ω);
-    ϵ : states Π Ω;
-  }.
+Arguments tracker : default implicits.
+Arguments outstanding : default implicits.
+Arguments ϵ : default implicits.
 
-  Variant line :=
-    | Invoke (op : (type ω).(OP)) (arg : Value.t)
-    | Intermediate
-    | Response (resp : Value.t).
+Module Implementation.
 
-  Inductive run :=
-    | Initial (c : configuration)
-    | Step (r : run) (π : Π) (l : line) (c : configuration).
+  Section Run.
 
-  Variable impl : Implementation Π Ω ω.
+    Context {Π Ω₀ Ω} `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀}.
 
-  Definition initial_frame op arg :=
-    let proc := procedures impl op in
-    {|
-      pc := 0;
-      registers := singletonM proc.(param) arg;
-      proc := proc;
-    |}.
+    Variable impl : Implementation Π Ω ω.
 
-  Variant step : configuration → Π → line → configuration → Prop :=
-    | step_invoke tracker outstanding π ϵ op arg :
-      outstanding !! π = None →
-      step 
-        {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-        π
-        (Invoke op arg)
-        {| tracker := evolve_inv tracker op π arg; outstanding := <[π := initial_frame op arg]>outstanding; ϵ := ϵ |}
-    | step_intermediate tracker outstanding π ϵ ϵ' f f' :
-      (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
-      outstanding !! π = Some f →
-      step_procedure π ϵ f ϵ' (Next f') →
-      step
-        {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-        π
-        Intermediate
-        {| tracker := evolve tracker; outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
-    | step_response tracker outstanding π ϵ ϵ' f v :
-      (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
-      outstanding !! π = Some f →
-      step_procedure π ϵ f ϵ' (Return v) →
-      step
-        {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-        π
-        (Response v)
-        {| tracker := evolve_ret tracker π v; outstanding := delete π outstanding; ϵ := ϵ' |}.
+    Definition initial_frame op arg :=
+      let proc := procedures impl op in
+      {|
+        pc := 0;
+        registers := singletonM proc.(param) arg;
+        proc := proc;
+      |}.
 
-  Definition final (r : run Π ω) :=
-    match r with
-    | Initial c | Step _ _ _ c => c
-    end.
+    Variant step : configuration Π Ω ω → Π → line Π ω → configuration Π Ω ω → Prop :=
+      | step_invoke tracker outstanding π ϵ op arg :
+        outstanding !! π = None →
+        step 
+          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+          π
+          (Invoke op arg)
+          {| tracker := evolve_inv tracker op π arg; outstanding := <[π := initial_frame op arg]>outstanding; ϵ := ϵ |}
+      | step_intermediate tracker outstanding π ϵ ϵ' f f' :
+        (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        step_procedure π ϵ f ϵ' (Next f') →
+        step
+          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+          π
+          Intermediate
+          {| tracker := evolve tracker; outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
+      | step_response tracker outstanding π ϵ ϵ' f v :
+        (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        step_procedure π ϵ f ϵ' (Return v) →
+        step
+          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+          π
+          (Response v)
+          {| tracker := evolve_ret tracker π v; outstanding := delete π outstanding; ϵ := ϵ' |}.
 
-  Inductive Run : run Π ω → Prop :=
-    | Run_initial : Run (Initial {| outstanding := ∅; ϵ := impl.(initial_states) |})
-    | Run_step r π l c : Run r → step (final r) π l c → Run (Step r π l c).
+    Variant initial_tracker : meta_configuration Π ω :=
+      initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
 
-  Fixpoint behavior (r : run Π ω) : list (Π * line Π ω) :=
-    match r with
-    | Initial _ => []
-    | Step r π l c =>
-        match l with
-        | Invoke _ _ | Response _ => (π, l) :: behavior r
-        | Intermediate => behavior r
-        end
-    end.
+    Definition run := run (configuration Π Ω ω) Π ω.
 
-  Variant Behavior : list (Π * line Π ω) → Prop :=
-    | Behavior_intro (r : run Π ω) : Run r → Behavior (behavior r).
+    Definition Run := Run {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |} step.
 
-  Lemma behavior_no_intermediate π l r : Behavior r → (π, l) ∈ r → l ≠ Intermediate.
-  Proof.
-  Admitted.
+    Variant Behavior : snoc_list (Π * line Π ω) → Prop :=
+      | Behavior_intro (r : run) : Run r → Behavior (behavior r).
 
-End Run.
+  End Run.
+
+
+Inductive Status `{Countable Π, Object Π Ω} {ω : Ω} (π : Π) : run Π (sing ω) ω → status Π ω → Prop :=
+  | Status_empty c : Status π (Initial c) Idle (* Every process idle in run consisting solely of initial configuration *)
+  | Status_prefix r π' l c s :
+      (* If the run begins with some other process π' taking a step *)
+      π' ≠ π →
+      (* And π has status s in the prefix *)
+      Status π r s →
+      (* Then π has status s in the composite run *)
+      Status π (Step r π' l c) s
+  | Status_intermediate r v c frame :
+      (* If π has an outstanding operation *)
+      c.(outstanding) !! π = Some frame →
+      (* And [r] is bound to [v] *)
+      frame.(registers) !! "r" = Some v →
+      (* Then [π] has linearized with [v] *)
+      Status π (Step r π Intermediate c) (Linearized v)
+  | Status_invoke r op arg c : Status π (Step r π (Invoke op arg) c) (Pending op arg)
+  | Status_response r v c : Status π (Step r π (Response v) c) Idle.
+
+Lemma status_deterministic `{Countable Π, Object Π Ω} {ω : Ω} (π : Π) (r : run Π (sing ω) ω) s s' : Status π r s → Status π r s' → s = s'.
+Proof.
+  induction r; intros; inv H1; inv H2; auto.
+Qed.
+
+Definition atomic_run `{Countable Π, Object Π Ω} {ω : Ω} (atomic : run Π (sing ω) ω) ϵ₀ := Run (atomic_implementation ω ϵ₀) atomic.
+
+Lemma status_total `{Countable Π, Object Π Ω} {ω : Ω} (π : Π) (r : run Π (sing ω) ω) : ∃ s, Status π r s.
+
+(* Variant linearization `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) (atomic : run Π (sing ω) ω) : Prop :=
+  linearization_intro : 
+    Run impl r → Run (atomic_implementation ω impl.(initial_state)) atomic → behavior r = behavior atomic → linearization impl r atomic. *)
+
+Lemma sound `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) :
+  (* If [r] is a run of implementation [impl] *)
+  Run impl r →
+    (* Then for every atomic configuration (σ, f) *)
+    ∀ σ f, (final r).(tracker) σ f →
+      (* There exists some atomic run *)
+      ∃ atomic,
+        atomic_run atomic impl.(initial_state) ∧
+        (* Where the behaviors match *)
+        behavior r = behavior atomic ∧
+        (* The final states are equal *)
+        σ = (final atomic).(ϵ) (Sing ω) ∧
+        (∀ π, 
+          (∀ )
+Proof.
+  induction r.
+  - simpl. intros. eexists. split.
+    + econstructor.
+    + split.
+      * reflexivity.
+      * inv H2. inv H3. reflexivity.
+  - simpl. intros. inv H2. destruct l.
+    + inv H9. eexists. split.
+      *
+    +
 
 Section LiftL.
 
@@ -516,7 +673,6 @@ Section LiftR.
 
 End LiftR.
 
-
 Section Augmentation.
 
   (* An augmentation specifies, f*)
@@ -524,11 +680,6 @@ Section Augmentation.
   Context {Π Ω₀ Ω} `{EqDecision Π, Object Π Ω₀, Object Π Ω} {ω : Ω}.
 
   Variable impl : Implementation Π Ω ω.
-
-  Variant status :=
-    | Idle
-    | Pending (op : (type ω).(OP)) (arg : Value.t)
-    | Linearized (res : Value.t).
 
   Variant pending : status → Prop := pending_intro op arg : pending (Pending op arg).
 
