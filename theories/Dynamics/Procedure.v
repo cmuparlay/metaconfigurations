@@ -122,59 +122,6 @@ Arguments Linearized {_ _ _ _ _}.
 (* A meta configuration relates states of the implemented object and the status of each process *)
 Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
 
-Inductive δ_many {Π Ω} `{EqDecision Π, Object Π Ω} (ω : Ω) : (type ω).(Σ) → (Π → status Π ω) → list Π → (type ω).(Σ) → (Π → status Π ω) → Prop :=
-  | δ_many_refl σ f : δ_many ω σ f [] σ f
-  | δ_many_trans (f f' : Π → status Π ω) (σ σ' σ'' : (type ω).(Σ)) (π : Π) (op : (type ω).(OP)) (arg : Value.t) (res : Value.t) (πs : list Π) :
-    (* if [π] has invoked [op(arg)], but not returned *)
-    f π = Pending op arg →
-    (* And (σ', res) ∈ δ(σ, π, op, arg) *)
-    (type ω).(δ) σ π op arg σ' res →
-    δ_many ω σ' (Map.rebind π (Linearized res) f) πs σ'' f' →
-    δ_many ω σ f (π :: πs) σ'' f'.
-
-Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (op : (type ω).(OP)) (arg : Value.t) : Π → status Π ω :=
-  Map.rebind π (Pending op arg) f.
-
-Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (res : Value.t) := Map.rebind π (Linearized res) f.
-
-Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration Π ω :=
-  evolve_inv_intro σ f πs σ' f' :
-    (* If (σ, f) ∈ C *)
-    C σ f →
-    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many ω σ (invoke f π op arg) πs σ' f' →
-    (* Then (σ', f') is in the resulting metaconfiguration *)
-    evolve_inv C op π arg σ' f'.
-
-Variant evolve `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) : meta_configuration Π ω :=
-  evolve_intro σ f πs σ' f' :
-    (* If (σ, f) ∈ C *)
-    C σ f →
-    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many ω σ f πs σ' f' →
-    (* Then (σ', f') is in the resulting metaconfiguration *)
-    evolve C σ' f'.
-
-Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (π : Π) (res : Value.t) : meta_configuration Π ω :=
-  evolve_ret_intro σ f πs σ' f' :
-    f π = Linearized res →
-    (* If (σ, f) ∈ C *)
-    C σ f →
-    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many ω σ (ret f π res) πs σ' f' →
-    (* Then (σ', f') is in the resulting metaconfiguration *)
-    evolve_ret C π res σ' f'.
-
-(* Definition atomic_run {Π Ω} `{Countable Π, Object Π Ω} (ϵ : states Π Ω) (ω : Ω) (l : line ω) : list (Π * line) :=
-  Run (atomic_implementation ϵ ω). *)
-
-Inductive run (C Π : Type) `{Object Π Ω} (ω : Ω) :=
-  | Initial (c : C)
-  | Step (r : run C Π ω) (π : Π) (l : line Π ω) (c : C).
-
-Arguments Initial {_ _ _ _ _ _}.
-Arguments Step {_ _ _ _ _ _}.
-
 Inductive snoc_list (A : Type) : Type :=
   | Nil
   | Snoc (h : snoc_list A) (t : A).
@@ -188,6 +135,60 @@ Notation "⟨ x ; y ; .. ; z ⟩" := (Snoc .. (Snoc (Snoc Nil x) y) .. z) : list
 
 Infix ",," := Snoc (at level 50, left associativity).
 
+Inductive δ_many {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(Σ) → (Π → status Π ω) → snoc_list Π → (type ω).(Σ) → (Π → status Π ω) → Prop :=
+  | δ_many_refl σ f : δ_many σ f ⟨⟩ σ f
+  | δ_many_trans f σ π op arg σ' res πs σ'' f' :
+    δ_many σ f πs σ' f' →
+    (* if [π] has invoked [op(arg)], but not returned *)
+    f' π = Pending op arg →
+    (* And (σ', res) ∈ δ(σ, π, op, arg) *)
+    (type ω).(δ) σ' π op arg σ'' res →
+    δ_many σ f (πs ,, π) σ'' (Map.rebind π (Linearized res) f').
+
+Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (op : (type ω).(OP)) (arg : Value.t) : Π → status Π ω :=
+  Map.rebind π (Pending op arg) f.
+
+Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (res : Value.t) := Map.rebind π (Linearized res) f.
+
+Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration Π ω :=
+  evolve_inv_intro σ f πs σ' f' :
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    f π = Idle →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many σ (invoke f π op arg) πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve_inv C op π arg σ' f'.
+
+Variant evolve `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) : meta_configuration Π ω :=
+  evolve_intro σ f πs σ' f' :
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many σ f πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve C σ' f'.
+
+Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (π : Π) (res : Value.t) : meta_configuration Π ω :=
+  evolve_ret_intro σ f πs σ' f' :
+    f π = Linearized res →
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many σ (ret f π res) πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve_ret C π res σ' f'.
+
+(* Definition atomic_run {Π Ω} `{Countable Π, Object Π Ω} (ϵ : states Π Ω) (ω : Ω) (l : line ω) : list (Π * line) :=
+  Run (atomic_implementation ϵ ω). *)
+
+Inductive run (C Π : Type) `{Object Π Ω} (ω : Ω) :=
+  | Initial (c : C)
+  | Step (r : run C Π ω) (π : Π) (l : line Π ω) (c : C).
+
+Arguments Initial {_ _ _ _ _ _}.
+Arguments Step {_ _ _ _ _ _}.
+
 Fixpoint behavior {C Π : Type} `{Object Π Ω} {ω : Ω} (r : run C Π ω) : snoc_list (Π * line Π ω) :=
   match r with
   | Initial _ => ⟨⟩
@@ -199,8 +200,8 @@ Fixpoint behavior {C Π : Type} `{Object Π Ω} {ω : Ω} (r : run C Π ω) : sn
   end.
 
 Inductive subsequence {A : Type} : snoc_list A → snoc_list A → Prop :=
-  | subsequence_nil l : subsequence ⟨⟩ l
-  | subsequence_cons h h' t : subsequence h h' → subsequence (h ,, t) (h' ,, t).
+  | subsequence_refl l : subsequence l l
+  | subsequence_trans l h t : subsequence l h → subsequence l (h ,, t).
 
 Definition final {C Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (r : run C Π ω) :=
   match r with
@@ -235,7 +236,7 @@ Module Atomic.
       f π = Linearized v →
       step (σ, f) π (Response v) (σ, Map.rebind π Idle f).
 
-    Definition Run {Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (c₀ : configuration Π ω) : run Π ω → Prop := Run c₀ step.
+    Definition Run {Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (σ₀ : (type ω).(Σ)) : run Π ω → Prop := Run (σ₀, λ _, Idle) step.
 
 End Atomic.
 
@@ -311,63 +312,84 @@ Module Implementation.
 
   End Run.
 
-
-Inductive Status `{Countable Π, Object Π Ω} {ω : Ω} (π : Π) : run Π (sing ω) ω → status Π ω → Prop :=
-  | Status_empty c : Status π (Initial c) Idle (* Every process idle in run consisting solely of initial configuration *)
-  | Status_prefix r π' l c s :
-      (* If the run begins with some other process π' taking a step *)
-      π' ≠ π →
-      (* And π has status s in the prefix *)
-      Status π r s →
-      (* Then π has status s in the composite run *)
-      Status π (Step r π' l c) s
-  | Status_intermediate r v c frame :
-      (* If π has an outstanding operation *)
-      c.(outstanding) !! π = Some frame →
-      (* And [r] is bound to [v] *)
-      frame.(registers) !! "r" = Some v →
-      (* Then [π] has linearized with [v] *)
-      Status π (Step r π Intermediate c) (Linearized v)
-  | Status_invoke r op arg c : Status π (Step r π (Invoke op arg) c) (Pending op arg)
-  | Status_response r v c : Status π (Step r π (Response v) c) Idle.
-
-Lemma status_deterministic `{Countable Π, Object Π Ω} {ω : Ω} (π : Π) (r : run Π (sing ω) ω) s s' : Status π r s → Status π r s' → s = s'.
-Proof.
-  induction r; intros; inv H1; inv H2; auto.
-Qed.
-
-Definition atomic_run `{Countable Π, Object Π Ω} {ω : Ω} (atomic : run Π (sing ω) ω) ϵ₀ := Run (atomic_implementation ω ϵ₀) atomic.
-
-Lemma status_total `{Countable Π, Object Π Ω} {ω : Ω} (π : Π) (r : run Π (sing ω) ω) : ∃ s, Status π r s.
+End Implementation.
 
 (* Variant linearization `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) (atomic : run Π (sing ω) ω) : Prop :=
   linearization_intro : 
     Run impl r → Run (atomic_implementation ω impl.(initial_state)) atomic → behavior r = behavior atomic → linearization impl r atomic. *)
 
-Lemma sound `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) :
+Section Soundness.
+
+  Context `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀}.
+
+  Variable impl : Implementation Π Ω ω.
+
+  Variant linearizable (r : run (configuration Π Ω ω) Π ω) σ f : Prop :=
+    linearizable_intro atomic :
+      Atomic.Run impl.(initial_state) atomic →
+        behavior r = behavior atomic →
+          final atomic = (σ, f) →
+            linearizable r σ f.
+
+  Definition tracker_sound (r : run (configuration Π Ω ω) Π ω) := ∀ σ f, (final r).(tracker) σ f → linearizable r σ f.
+
+  Lemma sound_invoke r π op arg c :
+    Implementation.Run impl (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
+  Proof.
+    intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
+    generalize dependent f. generalize dependent σ. generalize dependent π. induction πs.
+    - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H7.
+      apply IH in H5. inv H5.
+      eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
+      + econstructor.
+        * assumption.
+        * rewrite H8. now econstructor. 
+      + simpl. now rewrite H7. 
+      + reflexivity.
+    - intros. inv H7. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
+      apply IH in H5. inv H5. eapply IHπs in H10. inv H10.
+      eapply linearizable_intro with (atomic := Step atomic0 π Intermediate _).
+      + econstructor.
+        * assumption.
+        * rewrite H12. simpl in *. inv H11. econstructor.  eauto.
+
+(* Lemma invoke_sound :  *)
+
+Lemma sound (r : run (configuration Π Ω ω) Π ω)  :
   (* If [r] is a run of implementation [impl] *)
-  Run impl r →
+  Implementation.Run impl r →
     (* Then for every atomic configuration (σ, f) *)
-    ∀ σ f, (final r).(tracker) σ f →
-      (* There exists some atomic run *)
-      ∃ atomic,
-        atomic_run atomic impl.(initial_state) ∧
-        (* Where the behaviors match *)
-        behavior r = behavior atomic ∧
-        (* The final states are equal *)
-        σ = (final atomic).(ϵ) (Sing ω) ∧
-        (∀ π, 
-          (∀ )
+    tracker_sound r.
 Proof.
   induction r.
-  - simpl. intros. eexists. split.
+  - simpl. intros. unfold tracker_sound. intros. econstructor.
     + econstructor.
-    + split.
-      * reflexivity.
-      * inv H2. inv H3. reflexivity.
+    + constructor.
+    + inv H2. inv H3. reflexivity.
   - simpl. intros. inv H2. destruct l.
-    + inv H9. eexists. split.
-      *
+    + inv H9. subst. simpl in *. inv H3. generalize dependent σ. generalize dependent f. induction πs.
+      * intros. inv H7. apply IHr with (σ := σ) (f := f0) in H6.
+        -- inv H6. destruct H3 as [? [? ?]]. eexists (Step x π (Invoke op arg) _). split.
+          ++ econstructor. 
+            ** assumption.
+            ** rewrite H7. econstructor. assumption.
+          ++ split.
+            ** econstructor. eauto.
+            ** simpl. f_equal.
+        -- rewrite <- H2. simpl. eassumption.
+      * intros. inv H5. apply IHr with (σ := σ) (f := f0) in H6.
+        -- inv H6. destruct H3 as [? [? ?]]. inv H7. eexists.
+          ++ split.
+            ** 
+    
+     eapply IHr in H6.
+      * admit.
+      * inv H3. rewrite <- H2. eauto. admit.
+    
+     eexists. split.
+      * econstructor.
+      * split.
+        -- 
     +
 
 Section LiftL.
@@ -696,16 +718,6 @@ Section Augmentation.
   Definition invoke (f : Π → status) π op arg := Map.rebind π (Pending op arg) f.
 
   Definition ret (f : Π → status) π res := Map.rebind π (Linearized res) f.
-
-  Inductive δ_many : (type ω).(Σ) → (Π → status) → list Π → (type ω).(Σ) → (Π → status) → Prop :=
-    | δ_many_refl σ f : δ_many σ f [] σ f
-    | δ_many_trans f σ π op arg σ' res πs σ'' f' :
-      (* if [π] has invoked [op(arg)], but not returned *)
-      f π = Pending op arg →
-      (* And (σ', res) ∈ δ(σ, π, op, arg) *)
-      (type ω).(δ) σ π op arg σ' res →
-      δ_many σ' (Map.rebind π (Linearized res) f) πs σ'' f' →
-      δ_many σ f (π :: πs) σ'' f'.
 
   Variant evolve_inv (C : meta_configuration) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration :=
     evolve_inv_intro σ f πs σ' f' :
