@@ -148,7 +148,7 @@ Inductive δ_many {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(
 Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (op : (type ω).(OP)) (arg : Value.t) : Π → status Π ω :=
   Map.rebind π (Pending op arg) f.
 
-Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (res : Value.t) := Map.rebind π (Linearized res) f.
+Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) := Map.rebind π Idle f.
 
 Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration Π ω :=
   evolve_inv_intro σ f πs σ' f' :
@@ -175,7 +175,7 @@ Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration �
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many σ (ret f π res) πs σ' f' →
+    δ_many σ (ret f π) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve_ret C π res σ' f'.
 
@@ -337,7 +337,7 @@ Section Soundness.
     Implementation.Run impl (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
   Proof.
     intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
-    generalize dependent f. generalize dependent σ. generalize dependent π. induction πs.
+    generalize dependent f. generalize dependent σ. induction πs.
     - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H7.
       apply IH in H5. inv H5.
       eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
@@ -348,49 +348,67 @@ Section Soundness.
       + reflexivity.
     - intros. inv H7. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
       apply IH in H5. inv H5. eapply IHπs in H10. inv H10.
-      eapply linearizable_intro with (atomic := Step atomic0 π Intermediate _).
+      eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
       + econstructor.
         * assumption.
-        * rewrite H12. simpl in *. inv H11. econstructor.  eauto.
+        * rewrite H12. simpl in *. econstructor; eauto.
+      + assumption.
+      + easy.
+  Qed.
 
-(* Lemma invoke_sound :  *)
+  Lemma sound_intermediate r π c :
+    Implementation.Run impl (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
+  Proof.
+    intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H6.
+    generalize dependent f0. generalize dependent σ. induction πs.
+    - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H8.
+      apply IH in H7. inv H7. 
+      now apply linearizable_intro with (atomic := atomic).
+    - intros. inv H8. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
+      apply IH in H7. inv H7. eapply IHπs in H10. inv H10.
+      eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
+      + econstructor.
+        * assumption.
+        * rewrite H12. simpl in *. econstructor; eauto.
+      + assumption.
+      + easy.
+  Qed.
 
-Lemma sound (r : run (configuration Π Ω ω) Π ω)  :
-  (* If [r] is a run of implementation [impl] *)
-  Implementation.Run impl r →
-    (* Then for every atomic configuration (σ, f) *)
-    tracker_sound r.
-Proof.
-  induction r.
-  - simpl. intros. unfold tracker_sound. intros. econstructor.
-    + econstructor.
-    + constructor.
-    + inv H2. inv H3. reflexivity.
-  - simpl. intros. inv H2. destruct l.
-    + inv H9. subst. simpl in *. inv H3. generalize dependent σ. generalize dependent f. induction πs.
-      * intros. inv H7. apply IHr with (σ := σ) (f := f0) in H6.
-        -- inv H6. destruct H3 as [? [? ?]]. eexists (Step x π (Invoke op arg) _). split.
-          ++ econstructor. 
-            ** assumption.
-            ** rewrite H7. econstructor. assumption.
-          ++ split.
-            ** econstructor. eauto.
-            ** simpl. f_equal.
-        -- rewrite <- H2. simpl. eassumption.
-      * intros. inv H5. apply IHr with (σ := σ) (f := f0) in H6.
-        -- inv H6. destruct H3 as [? [? ?]]. inv H7. eexists.
-          ++ split.
-            ** 
-    
-     eapply IHr in H6.
-      * admit.
-      * inv H3. rewrite <- H2. eauto. admit.
-    
-     eexists. split.
-      * econstructor.
-      * split.
-        -- 
-    +
+  Lemma sound_response r π v c :
+    Implementation.Run impl (Step r π (Response v) c) → tracker_sound r → tracker_sound (Step r π (Response v) c).
+  Proof.
+    intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
+    generalize dependent f0. generalize dependent σ. induction πs.
+    - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H9.
+      apply IH in H7. inv H7.
+      eapply linearizable_intro with (atomic := Step atomic π (Response v) _).
+      + econstructor.
+        * assumption.
+        * rewrite H10. now econstructor. 
+      + simpl. now rewrite H9. 
+      + reflexivity.
+    - intros. inv H9. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
+      apply IH in H7. inv H5. eapply IHπs in H11. inv H11.
+      eapply linearizable_intro with (atomic := Step atomic t Intermediate _).
+      + econstructor.
+        * assumption.
+        * rewrite H10. simpl in *. econstructor; eauto.
+      + assumption.
+      + easy.
+  Qed.
+
+  Lemma sound (r : run (configuration Π Ω ω) Π ω) : Implementation.Run impl r → tracker_sound r.
+  Proof.
+    induction r.
+    - simpl. intros. unfold tracker_sound. intros. econstructor.
+      + econstructor.
+      + constructor.
+      + inv H2. inv H3. reflexivity.
+    - simpl. intros. inversion H2. destruct l.
+      + apply sound_invoke; auto.
+      + apply sound_intermediate; auto.
+      + apply sound_response; auto.
+  Qed.
 
 Section LiftL.
 
@@ -717,7 +735,7 @@ Section Augmentation.
 
   Definition invoke (f : Π → status) π op arg := Map.rebind π (Pending op arg) f.
 
-  Definition ret (f : Π → status) π res := Map.rebind π (Linearized res) f.
+  Definition ret (f : Π → status) π := Map.rebind π Idle f.
 
   Variant evolve_inv (C : meta_configuration) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration :=
     evolve_inv_intro σ f πs σ' f' :
@@ -749,7 +767,7 @@ Section Augmentation.
       (* If every process in permutation [πs] is pending *)
       Forall (λ π, pending (f π)) πs → 
       (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-      δ_many σ (ret f π res) πs σ' f' →
+      δ_many σ (ret f π) πs σ' f' →
       (* Then (σ', f') is in the resulting metaconfiguration *)
       evolve_ret C π res σ' f'.
 
