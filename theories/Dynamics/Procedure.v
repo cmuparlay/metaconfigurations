@@ -333,6 +333,9 @@ Section Soundness.
 
   Definition tracker_sound (r : run (configuration Π Ω ω) Π ω) := ∀ σ f, (final r).(tracker) σ f → linearizable r σ f.
 
+  (* Lemma outstanding_linearizations_sound r σ' :
+    Implementation.Run impl r → tracker_sound r → ∀ σ f, δ_many  *)
+
   Lemma sound_invoke r π op arg c :
     Implementation.Run impl (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
   Proof.
@@ -404,11 +407,62 @@ Section Soundness.
       + econstructor.
       + constructor.
       + inv H2. inv H3. reflexivity.
-    - simpl. intros. inversion H2. destruct l.
+    - intros. inversion H2. destruct l.
       + apply sound_invoke; auto.
       + apply sound_intermediate; auto.
       + apply sound_response; auto.
   Qed.
+
+  Definition tracker_complete r := 
+    ∀ atomic σ f, 
+      Atomic.Run impl.(initial_state) atomic →
+        behavior r = behavior atomic →
+          final atomic = (σ, f) →
+            (final r).(tracker) σ f.
+
+
+  (* For every linearization of a *)
+
+  Lemma complete r π op arg c σ' f' atomic :
+    Atomic.Run impl.(initial_state) atomic →
+      behavior (Step r π (Invoke op arg) c) = behavior atomic →
+        (* If [atomic] is a linearization of run [r, (π, l), c] with final configuration [(σ', f')] *)
+        final atomic = (σ', f') →
+          Implementation.Run impl (Step r π (Invoke op arg) c) →
+            tracker_complete r →
+              ∃ atomic' σ f πs,
+                Atomic.Run impl.(initial_state) atomic' ∧
+                  (* Then there exists some linearization [atomic'] of [r] *)
+                  behavior r = behavior atomic' ∧
+                    (* With final configuration [(σ, f)] *)
+                    final atomic' = (σ, f) ∧
+                      (* Such that there exists some sequence of processes [πs] such 
+                        that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
+                      δ_many σ (invoke f π op arg) πs σ' f'.
+    Proof.
+      intros Hatomic. revert σ' f'. induction atomic.
+      - intros. inv H2. destruct l; try discriminate.
+        exists (Initial (c)). exists σ'. exists f'. simpl in *. exists ⟨⟩. split.
+        + assumption.
+        + split.
+          * assumption.
+          * split.
+            -- assumption.
+            -- constructor.
+      - intros. destruct l.
+        + simpl in *. destruct l0; try discriminate.
+          * inv H2. subst.
+
+    
+     tracker_complete (Step r π (Invoke op arg) c).
+  Proof.
+
+  Lemma complete_invoke r π op arg c :
+    Implementation.Run impl (Step r π (Invoke op arg) c) → tracker_complete r → tracker_complete (Step r π (Invoke op arg) c).
+  Proof.
+    
+
+  Lemma complete : Atomic.Run impl.(initial_state) atomic → behavior r = behavior atomic → final atomic = (σ, f) → (final r).(tracker) σ f.
 
 Section LiftL.
 
