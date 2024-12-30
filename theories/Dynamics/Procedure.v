@@ -318,7 +318,7 @@ End Implementation.
   linearization_intro : 
     Run impl r → Run (atomic_implementation ω impl.(initial_state)) atomic → behavior r = behavior atomic → linearization impl r atomic. *)
 
-Section Soundness.
+Section Adequacy.
 
   Context `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀}.
 
@@ -434,7 +434,8 @@ Section Soundness.
                   final atomic' = (σ, f) ∧
                     (* Such that there exists some sequence of processes [πs] such 
                       that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
-                    δ_many σ (invoke f π op arg) πs σ' f'.
+                    δ_many σ (invoke f π op arg) πs σ' f' ∧
+                      f π = Idle.
     Proof.
       intros Hatomic.
       (* Need to generalize over the final configuration of the atomic run *)
@@ -464,8 +465,10 @@ Section Soundness.
             -- split.
               ++ reflexivity.
               ++ inv Hatomic. inv H9. unfold invoke.
-                assert ((σ', f0) = (σ, f)) by now transitivity (final atomic).
-                inv H3. constructor.
+                  assert ((σ', f0) = (σ, f)) by now transitivity (final atomic).
+                  inv H3. split.
+                ** constructor.
+                ** assumption.
         + (* [l] is an intermediate line, so [atomic, (π', l), c'] is also a linearization of [Step r π (Invoke op arg) c] *) 
           simpl in *.
           (* Because [atomic, (π', l), c'] is an atomic run, so is [atomic] *)
@@ -476,7 +479,7 @@ Section Soundness.
           inv H10.
           apply IHatomic with (σ' := σ) (f' := f) in H7 as ?; eauto.
           (* We can apply the induction hypothesis to [atomic] *)
-          destruct H5 as [atomic' [σ'' [f'' [πs [? [? [? ?]]]]]]].
+          destruct H5 as [atomic' [σ'' [f'' [πs [? [? [? [? ?]]]]]]]].
           exists atomic'. exists σ''. exists f''.
           exists (πs ,, π0).
           split.
@@ -485,11 +488,13 @@ Section Soundness.
             -- assumption.
             -- split.
               ** assumption.
-              ** econstructor; eauto.
+              ** split.
+                --- econstructor; eauto.
+                --- assumption.
         + discriminate.
   Qed.
 
-  Lemma linearization_reponse r π v c σ' f' atomic :
+  Lemma linearization_response r π v c σ' f' atomic :
     Atomic.Run impl.(initial_state) atomic →
       behavior (Step r π (Response v) c) = behavior atomic →
         (* If [atomic] is a linearization of run [r, (π, Response v), c] with final configuration [(σ', f')] *)
@@ -503,7 +508,8 @@ Section Soundness.
                   final atomic' = (σ, f) ∧
                     (* Such that there exists some sequence of processes [πs] such 
                       that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
-                    δ_many σ (ret f π) πs σ' f'.
+                    δ_many σ (ret f π) πs σ' f' ∧
+                      f π = Linearized v.
     Proof.
       intros Hatomic.
       (* Need to generalize over the final configuration of the atomic run *)
@@ -527,7 +533,7 @@ Section Soundness.
           inv H10.
           apply IHatomic with (σ' := σ) (f' := f) in H7 as ?; eauto.
           (* We can apply the induction hypothesis to [atomic] *)
-          destruct H5 as [atomic' [σ'' [f'' [πs [? [? [? ?]]]]]]].
+          destruct H5 as [atomic' [σ'' [f'' [πs [? [? [? [? ?]]]]]]]].
           exists atomic'. exists σ''. exists f''.
           exists (πs ,, π0).
           split.
@@ -536,10 +542,12 @@ Section Soundness.
             -- assumption.
             -- split.
               ** assumption.
-              ** econstructor; eauto.
+              ** split.
+                --- econstructor; eauto.
+                --- assumption.
         + (* [l] is a response *) 
           simpl in *. 
-          (* Because the behavior of [atomic] is the same as [Step r π (Invoke op arg) c], this invocation must be [invoke π op arg] *)
+          (* Because the behavior of [atomic] is the same as [Step r π (Response v) c], this response must be [Response v] *)
           inv H2.
           (* We can take [atomic] as the linearization of [r] *)
           exists atomic.
@@ -555,18 +563,51 @@ Section Soundness.
               ++ reflexivity.
               ++ inv Hatomic. inv H9. unfold invoke.
                 assert ((σ', f0) = (σ, f)) by now transitivity (final atomic).
-                inv H3. constructor.
+                inv H3. split.
+                ** constructor.
+                ** assumption.
   Qed.
-    
-     tracker_complete (Step r π (Invoke op arg) c).
-  Proof.
 
-  Lemma complete_invoke r π op arg c :
-    Implementation.Run impl (Step r π (Invoke op arg) c) → tracker_complete r → tracker_complete (Step r π (Invoke op arg) c).
+  (* Every linearization of an initial run is also initial *)
+  Lemma linearization_empty c atomic :
+    Implementation.Run impl (Initial c) → Atomic.Run impl.(initial_state) atomic → behavior (Initial c) = behavior atomic → atomic = Initial (impl.(initial_state), λ _, Idle).
   Proof.
-    
+    simpl. intros Hrun. inv Hrun. induction atomic.
+    - intros. inv H2. reflexivity.
+    - intros. inv H2. destruct l; simpl in *.
+      + discriminate.
+      + apply IHatomic in H6; auto. inv H9. simpl in *. inv H2.
+      + discriminate.
+  Qed.
 
-  Lemma complete : Atomic.Run impl.(initial_state) atomic → behavior r = behavior atomic → final atomic = (σ, f) → (final r).(tracker) σ f.
+  Lemma complete r atomic σ f : Implementation.Run impl r → Atomic.Run impl.(initial_state) atomic → behavior r = behavior atomic → final atomic = (σ, f) → (final r).(tracker) σ f.
+  Proof.
+    revert atomic σ f.
+    induction r.
+    - simpl. intros. eapply linearization_empty in H2 as ?; eauto. 
+      subst. simpl in *. inv H5. inv H2. simpl. econstructor.
+    - destruct l.
+      + intros. eapply linearization_invoke in H3 as ?; eauto.
+        inv H6 as [atomic' [σ' [f' [πs [? [? [? [? ?]]]]]]]].
+        simpl in *. inv H2. inv H16. simpl. econstructor.
+        * assert (tracker0 = tracker (final r)).
+          { rewrite <- H2. reflexivity. }
+          erewrite H6; eauto.
+        * auto.
+        * eauto.
+      + simpl in *. intros. inv H2. inv H11. simpl. econstructor.
+        * rewrite <- H2 in IHr. simpl in *. eapply IHr; eauto.
+        * econstructor.
+      + intros. eapply linearization_response in H3 as ?; eauto.
+        inv H6 as [atomic' [σ' [f' [πs [? [? [? [? ?]]]]]]]].
+        simpl in *. inv H2. inv H16. simpl.
+        assert (tracker0 = tracker (final r)).
+        { rewrite <- H2. reflexivity. }
+        erewrite H6.
+        econstructor; eauto.
+  Qed.
+
+End Adequacy.
 
 Section LiftL.
 
@@ -870,96 +911,3 @@ Section LiftR.
   Qed.
 
 End LiftR.
-
-Section Augmentation.
-
-  (* An augmentation specifies, f*)
-
-  Context {Π Ω₀ Ω} `{EqDecision Π, Object Π Ω₀, Object Π Ω} {ω : Ω}.
-
-  Variable impl : Implementation Π Ω ω.
-
-  Variant pending : status → Prop := pending_intro op arg : pending (Pending op arg).
-
-  Definition atomic_configuration := ((type ω).(Σ) * (Π → status))%type.
-
-  (* A meta configuration relates states of the implemented object and the status of each process *)
-  Definition meta_configuration := (type ω).(Σ) → (Π → status) → Prop.
-
-  Variant meta_configurations := M.
-
-  Instance meta_config_eq_dec : EqDecision meta_configurations.
-  Proof. solve_decision. Defined.
-
-  Definition invoke (f : Π → status) π op arg := Map.rebind π (Pending op arg) f.
-
-  Definition ret (f : Π → status) π := Map.rebind π Idle f.
-
-  Variant evolve_inv (C : meta_configuration) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration :=
-    evolve_inv_intro σ f πs σ' f' :
-      (* If (σ, f) ∈ C *)
-      C σ f →
-      (* If every process in permutation [πs] is pending *)
-      Forall (λ π, pending (f π)) πs → 
-      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-      δ_many σ (invoke f π op arg) πs σ' f' →
-      (* Then (σ', f') is in the resulting metaconfiguration *)
-      evolve_inv C op π arg σ' f'.
-
-  Variant evolve (C : meta_configuration) : meta_configuration :=
-    evolve_intro σ f πs σ' f' :
-      (* If (σ, f) ∈ C *)
-      C σ f →
-      (* If every process in permutation [πs] is pending *)
-      Forall (λ π, pending (f π)) πs → 
-      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-      δ_many σ f πs σ' f' →
-      (* Then (σ', f') is in the resulting metaconfiguration *)
-      evolve C σ' f'.
-
-  Variant evolve_ret (C : meta_configuration) (π : Π) (res : Value.t) : meta_configuration :=
-    evolve_ret_intro σ f πs σ' f' :
-      f π = Linearized res →
-      (* If (σ, f) ∈ C *)
-      C σ f →
-      (* If every process in permutation [πs] is pending *)
-      Forall (λ π, pending (f π)) πs → 
-      (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-      δ_many σ (ret f π) πs σ' f' →
-      (* Then (σ', f') is in the resulting metaconfiguration *)
-      evolve_ret C π res σ' f'.
-
-  Variant meta_config_operation := EvolveInv (op : (type ω).(OP)) | Evolve | EvolveRet.
-
-  Variant transition_meta_config (C : meta_configuration) (π : Π) : meta_config_operation → Value.t → meta_configuration → Value.t → Prop :=
-    | transition_evolve_inv op arg : transition_meta_config C π (EvolveInv op) arg (evolve_inv C op π arg) Value.Unit
-    | transition_evolve : transition_meta_config C π Evolve Value.Unit (evolve C) Value.Unit
-    | transition_evolve_ret arg : transition_meta_config C π EvolveRet arg (evolve_ret C π arg) Value.Unit.
-
-  Instance object_meta_config : Object Π meta_configurations :=
-    λ M, 
-      {|
-        Σ := (type ω).(Σ) → (Π → status) → Prop;
-        OP := meta_config_operation;
-        δ := transition_meta_config;
-      |}.
-
-End Augmentation.
-
-  (* Auxillary objects *)
-  (* Variable Ω' : Type.
-
-  Context `{Object Π Ω'} := zip_with (λ l l', Seq (lift_stmt_l l) (lift_stmt_r l')).
-
-  (* Type of implemented object *)
-  Variable Ω₀ : Type.
-
-  (* The object being implemented *)
-  Variable ω : Ω₀.
-
-  Context `{Object Π Ω₀}.
-
-  Variable impl : Implementation Π Ω ω.
-
-  
-End Augmentation. *)
