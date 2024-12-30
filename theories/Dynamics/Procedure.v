@@ -423,7 +423,7 @@ Section Soundness.
   Lemma linearization_invoke r π op arg c σ' f' atomic :
     Atomic.Run impl.(initial_state) atomic →
       behavior (Step r π (Invoke op arg) c) = behavior atomic →
-        (* If [atomic] is a linearization of run [r, (π, l), c] with final configuration [(σ', f')] *)
+        (* If [atomic] is a linearization of run [r, (π, Invoke op arg), c] with final configuration [(σ', f')] *)
         final atomic = (σ', f') →
           Implementation.Run impl (Step r π (Invoke op arg) c) →
             ∃ atomic' σ f πs,
@@ -487,6 +487,75 @@ Section Soundness.
               ** assumption.
               ** econstructor; eauto.
         + discriminate.
+  Qed.
+
+  Lemma linearization_reponse r π v c σ' f' atomic :
+    Atomic.Run impl.(initial_state) atomic →
+      behavior (Step r π (Response v) c) = behavior atomic →
+        (* If [atomic] is a linearization of run [r, (π, Response v), c] with final configuration [(σ', f')] *)
+        final atomic = (σ', f') →
+          Implementation.Run impl (Step r π (Response v) c) →
+            ∃ atomic' σ f πs,
+              Atomic.Run impl.(initial_state) atomic' ∧
+                (* Then there exists some linearization [atomic'] of [r] *)
+                behavior r = behavior atomic' ∧
+                  (* With final configuration [(σ, f)] *)
+                  final atomic' = (σ, f) ∧
+                    (* Such that there exists some sequence of processes [πs] such 
+                      that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
+                    δ_many σ (ret f π) πs σ' f'.
+    Proof.
+      intros Hatomic.
+      (* Need to generalize over the final configuration of the atomic run *)
+      revert σ' f'. 
+      (* Proceed by induction on the structure of the linearization *)
+      induction atomic.
+      - (* Case [atomic = Initial c']; impossible, as [atomic] is a linearization of [Step r π (Invoke op arg) c] *)
+        discriminate.
+      - (* Case [atomic = atomic, (π', l), c'] *)
+        intros.
+        (* Consider the last line [l] executed by the run *)
+        destruct l.
+        + discriminate.
+        + (* [l] is an intermediate line, so [atomic, (π', l), c'] is also a linearization of [Step r π (Invoke op arg) c] *) 
+          simpl in *.
+          (* Because [atomic, (π', l), c'] is an atomic run, so is [atomic] *)
+          inv Hatomic. subst.
+          (* Let (σ, f) be the final configuration of [atomic ]
+            Because ((σ, f), (π', Intermediate), (σ', f')) is a step,
+            [f π' = Pending op' arg'], and [(σ', f')] results from linearizing [op(arg)] *)
+          inv H10.
+          apply IHatomic with (σ' := σ) (f' := f) in H7 as ?; eauto.
+          (* We can apply the induction hypothesis to [atomic] *)
+          destruct H5 as [atomic' [σ'' [f'' [πs [? [? [? ?]]]]]]].
+          exists atomic'. exists σ''. exists f''.
+          exists (πs ,, π0).
+          split.
+          * assumption.
+          * split.
+            -- assumption.
+            -- split.
+              ** assumption.
+              ** econstructor; eauto.
+        + (* [l] is a response *) 
+          simpl in *. 
+          (* Because the behavior of [atomic] is the same as [Step r π (Invoke op arg) c], this invocation must be [invoke π op arg] *)
+          inv H2.
+          (* We can take [atomic] as the linearization of [r] *)
+          exists atomic.
+          destruct (final atomic) as [σ f] eqn:Hfinal. exists σ. exists f.
+          (* Because the last step of the linearization is an invocation, no pending processes linearize afterwards *)
+          exists ⟨⟩.
+          split.
+          * (* Because [atomic, (π', l), c'] is an atomic run, so is [atomic] *)
+            inv Hatomic. assumption.
+          * split.
+            -- assumption.
+            -- split.
+              ++ reflexivity.
+              ++ inv Hatomic. inv H9. unfold invoke.
+                assert ((σ', f0) = (σ, f)) by now transitivity (final atomic).
+                inv H3. constructor.
   Qed.
     
      tracker_complete (Step r π (Invoke op arg) c).
