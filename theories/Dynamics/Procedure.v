@@ -122,6 +122,10 @@ Arguments Linearized {_ _ _ _ _}.
 (* A meta configuration relates states of the implemented object and the status of each process *)
 Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
 
+Definition refines `{Object Π Ω} {ω : Ω} (M M' : meta_configuration Π ω) : Prop := ∀ σ f, M σ f → M' σ f.
+
+Instance meta_configuration_SubsetEq Π {Ω} `{Object Π Ω} (ω : Ω) : SubsetEq (meta_configuration Π ω) := refines.
+
 Inductive snoc_list (A : Type) : Type :=
   | Nil
   | Snoc (h : snoc_list A) (t : A).
@@ -617,24 +621,96 @@ Section Adequacy.
   (** [invariant P] is true iff [P] is true for the final configuration of every atomic run *)
   Definition invariant (P : _ → Prop) : Prop := ∀ r, Implementation.Run impl r → P (final r).
 
+  Lemma soundness : invariant (λ c, ∃ σ f, tracker c σ f) → linearizable.
+  Proof.
+    unfold linearizable, invariant. intros Hinv r Hrun.
+    pose proof Hinv r Hrun as [σ [f Hmeta]].
+    pose proof sound r Hrun.
+    unfold tracker_sound in *.
+    pose proof H2 _ _ Hmeta as [atomic Hatomic Hlinearization Hfinal].
+    now exists atomic.
+  Qed.
+
+  Lemma completeness : linearizable → invariant (λ c, ∃ σ f, tracker c σ f).
+  Proof.
+    unfold linearizable, invariant. intros Hlinearizable r Hrun.
+    pose proof Hlinearizable r Hrun as [atomic [Hatomic Hbehavior]].
+    destruct (final atomic) as [σ f] eqn:Hfinal.
+    exists σ. exists f.
+    eapply complete; eauto.
+  Qed.
+
   (* An implementation is linearizable iff its tracker being non-empty is an invariant of the algorithm *)
   Theorem adequacy : linearizable ↔ invariant (λ c, ∃ σ f, tracker c σ f).
   Proof.
     split.
-    - unfold linearizable, invariant. intros Hlinearizable r Hrun.
-      pose proof Hlinearizable r Hrun as [atomic [Hatomic Hbehavior]].
-      destruct (final atomic) as [σ f] eqn:Hfinal.
-      exists σ. exists f.
-      eapply complete; eauto.
-    - unfold linearizable, invariant. intros Hinv r Hrun.
-      pose proof Hinv r Hrun as [σ [f Hmeta]].
-      pose proof sound r Hrun.
-      unfold tracker_sound in *.
-      pose proof H2 _ _ Hmeta as [atomic Hatomic Hlinearization Hfinal].
-      now exists atomic.
+    - exact completeness.
+    - exact soundness.
   Qed.
 
 End Adequacy.
+
+Module PartialTracker.
+
+  Section Run.
+
+    Context {Π Ω₀ Ω} `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀}.
+
+    Variable impl : Implementation Π Ω ω.
+
+    Definition initial_frame op arg :=
+      let proc := procedures impl op in
+      {|
+        pc := 0;
+        registers := singletonM proc.(param) arg;
+        proc := proc;
+      |}.
+
+    Variant step : configuration Π Ω ω → Π → line Π ω → configuration Π Ω ω → Prop :=
+      | step_invoke tracker tracker' outstanding π ϵ op arg :
+        outstanding !! π = None →
+        tracker' ⊆ evolve_inv tracker op π arg →
+        step 
+          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+          π
+          (Invoke op arg)
+          {| tracker := tracker'; outstanding := <[π := initial_frame op arg]>outstanding; ϵ := ϵ |}
+      | step_intermediate tracker tracker' outstanding π ϵ ϵ' f f' :
+        (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        tracker' ⊆ evolve tracker →
+        step_procedure π ϵ f ϵ' (Next f') →
+        step
+          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+          π
+          Intermediate
+          {| tracker := tracker'; outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
+      | step_response tracker tracker' outstanding π ϵ ϵ' f v :
+        (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        tracker' ⊆ evolve_ret tracker π v →
+        step_procedure π ϵ f ϵ' (Return v) →
+        step
+          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
+          π
+          (Response v)
+          {| tracker := tracker'; outstanding := delete π outstanding; ϵ := ϵ' |}.
+
+    Variant initial_tracker : meta_configuration Π ω :=
+      initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
+
+    Definition run := run (configuration Π Ω ω) Π ω.
+
+    Definition Run := Run {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |} step.
+
+    Variant Behavior : snoc_list (Π * line Π ω) → Prop :=
+      | Behavior_intro (r : run) : Run r → Behavior (behavior r).
+
+  End Run.
+
+End PartialTracker.
+
+
 
 Section LiftL.
 
