@@ -324,14 +324,15 @@ Section Adequacy.
 
   Variable impl : Implementation Π Ω ω.
 
-  Variant linearizable (r : run (configuration Π Ω ω) Π ω) σ f : Prop :=
+  Variant linearizable_run (r : run (configuration Π Ω ω) Π ω) σ f : Prop :=
     linearizable_intro atomic :
       Atomic.Run impl.(initial_state) atomic →
         behavior r = behavior atomic →
           final atomic = (σ, f) →
-            linearizable r σ f.
+            linearizable_run r σ f.
 
-  Definition tracker_sound (r : run (configuration Π Ω ω) Π ω) := ∀ σ f, (final r).(tracker) σ f → linearizable r σ f.
+  Definition tracker_sound (r : run (configuration Π Ω ω) Π ω) :=
+    ∀ σ f, (final r).(tracker) σ f → linearizable_run r σ f.
 
   (* Lemma outstanding_linearizations_sound r σ' :
     Implementation.Run impl r → tracker_sound r → ∀ σ f, δ_many  *)
@@ -605,6 +606,32 @@ Section Adequacy.
         { rewrite <- H2. reflexivity. }
         erewrite H6.
         econstructor; eauto.
+  Qed.
+
+  (** An implementation is linearizable iff there exists a linearization for each of its runs *)
+  Definition linearizable :=
+    ∀ r,
+      Implementation.Run impl r →
+        ∃ atomic, Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
+
+  (** [invariant P] is true iff [P] is true for the final configuration of every atomic run *)
+  Definition invariant (P : _ → Prop) : Prop := ∀ r, Implementation.Run impl r → P (final r).
+
+  (* An implementation is linearizable iff its tracker being non-empty is an invariant of the algorithm *)
+  Theorem adequacy : linearizable ↔ invariant (λ c, ∃ σ f, tracker c σ f).
+  Proof.
+    split.
+    - unfold linearizable, invariant. intros Hlinearizable r Hrun.
+      pose proof Hlinearizable r Hrun as [atomic [Hatomic Hbehavior]].
+      destruct (final atomic) as [σ f] eqn:Hfinal.
+      exists σ. exists f.
+      eapply complete; eauto.
+    - unfold linearizable, invariant. intros Hinv r Hrun.
+      pose proof Hinv r Hrun as [σ [f Hmeta]].
+      pose proof sound r Hrun.
+      unfold tracker_sound in *.
+      pose proof H2 _ _ Hmeta as [atomic Hatomic Hlinearization Hfinal].
+      now exists atomic.
   Qed.
 
 End Adequacy.
