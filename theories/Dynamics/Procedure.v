@@ -151,15 +151,23 @@ Notation "⟨ x ; y ; .. ; z ⟩" := (Snoc .. (Snoc (Snoc Nil x) y) .. z) : list
 
 Infix ",," := Snoc (at level 50, left associativity).
 
-Inductive δ_many {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(Σ) → (Π → status Π ω) → snoc_list Π → (type ω).(Σ) → (Π → status Π ω) → Prop :=
-  | δ_many_refl σ f : δ_many σ f ⟨⟩ σ f
-  | δ_many_trans f σ π op arg σ' res πs σ'' f' :
-    δ_many σ f πs σ' f' →
+Inductive δ_multi {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(Σ) → (Π → status Π ω) → (type ω).(Σ) → (Π → status Π ω) → Prop :=
+  | δ_multi_refl σ f : δ_multi σ f σ f
+  | δ_multi_step f σ π op arg σ' res σ'' f' :
+    δ_multi σ f σ' f' →
     (* if [π] has invoked [op(arg)], but not returned *)
     f' π = Pending op arg →
     (* And (σ', res) ∈ δ(σ, π, op, arg) *)
     (type ω).(δ) σ' π op arg σ'' res →
-    δ_many σ f (πs ,, π) σ'' (Map.rebind π (Linearized res) f').
+    δ_multi σ f σ'' (Map.rebind π (Linearized res) f').
+
+Lemma δ_multi_trans {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} σ σ' σ'' (f f' f'' : Π → status Π ω) : 
+  δ_multi σ f σ' f' → δ_multi σ' f' σ'' f'' → δ_multi σ f σ'' f''.
+Proof.
+  intros Hmany Hmany'. generalize dependent Hmany. revert σ f. induction Hmany'.
+  - tauto.
+  - econstructor; eauto.
+Qed.
 
 Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (op : (type ω).(OP)) (arg : Value.t) : Π → status Π ω :=
   Map.rebind π (Pending op arg) f.
@@ -175,7 +183,7 @@ Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ
     C σ f →
     f π = Idle →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many σ (invoke f π op arg) πs σ' f' →
+    δ_multi σ (invoke f π op arg) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve_inv op π arg C σ' f'.
 
@@ -186,27 +194,27 @@ Proof.
 Qed. *)
 
 Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω → meta_configuration Π ω → meta_configuration Π ω :=
-  | evolve_inv C op arg σ f πs σ' f' :
+  | evolve_inv C op arg σ f σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
     f π = Idle →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many σ (invoke f π op arg) πs σ' f' →
+    δ_multi σ (invoke f π op arg) σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve π (Invoke op arg) C σ' f'
-  | evolve_intermediate C σ f πs σ' f' :
+  | evolve_intermediate C σ f σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many σ f πs σ' f' →
+    δ_multi σ f σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve π Intermediate C σ' f'
-  | evolve_ret C res σ f πs σ' f' :
+  | evolve_ret C res σ f σ' f' :
     f π = Linearized res →
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many σ (ret f π) πs σ' f' →
+    δ_multi σ (ret f π) σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve π (Response res) C σ' f'.
 
@@ -215,7 +223,7 @@ Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω �
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many σ f πs σ' f' →
+    δ_multi σ f πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve_intermediate Π ω C σ' f'. *)
 
@@ -230,7 +238,7 @@ Qed.
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_many σ (ret f π) πs σ' f' →
+    δ_multi σ (ret f π) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve_ret ω π res C σ' f'.
 
@@ -437,7 +445,7 @@ Module PartialTracker (S : Semantics).
           behavior atomic = behavior r →
             (final r).(tracker) σ f →
               final atomic = (σ, f) →
-                δ_many σ f πs σ' f' →
+                δ_multi σ f πs σ' f' →
                   ∃ atomic',
                     Atomic.Run impl.(initial_state) atomic' ∧
                       behavior atomic' = behavior r ∧
@@ -484,7 +492,8 @@ Module PartialTracker (S : Semantics).
       intros. inv H2. inv H9. apply refinement in H3. inv H3. destruct r.
       - (* Case that [r] consists of no steps: Impossible, as the first step taken by a run cannot be Intermediate *)
         inv H6. simpl in *. inv H2.
-      - simpl in *. inv H6.
+      - simpl in *. inv H6. inv H11. simpl in *. inv H3.
+        + 
 
 
     Lemma sound_intermediate r π c :
@@ -635,7 +644,7 @@ Module Adequacy (Impl : Implementation).
         behavior atomic = behavior r →
           (final r).(tracker) σ f →
             final atomic = (σ, f) →
-              δ_many σ f πs σ' f' →
+              δ_multi σ f πs σ' f' →
                 ∃ atomic',
                   Atomic.Run impl.(initial_state) atomic' ∧
                     behavior atomic' = behavior r ∧
@@ -801,7 +810,7 @@ Module Adequacy (Impl : Implementation).
                   final atomic' = (σ, f) ∧
                     (* Such that there exists some sequence of processes [πs] such 
                       that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
-                    δ_many σ (invoke f π op arg) πs σ' f' ∧
+                    δ_multi σ (invoke f π op arg) πs σ' f' ∧
                       f π = Idle.
     Proof.
       intros Hatomic.
@@ -875,7 +884,7 @@ Module Adequacy (Impl : Implementation).
                   final atomic' = (σ, f) ∧
                     (* Such that there exists some sequence of processes [πs] such 
                       that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
-                    δ_many σ (ret f π) πs σ' f' ∧
+                    δ_multi σ (ret f π) πs σ' f' ∧
                       f π = Linearized v.
     Proof.
       intros Hatomic.
