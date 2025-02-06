@@ -119,12 +119,24 @@ Arguments Idle {_ _ _ _ _}.
 Arguments Pending {_ _ _ _ _}.
 Arguments Linearized {_ _ _ _ _}.
 
-(* A meta configuration relates states of the implemented object and the status of each process *)
-Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
+Definition refines A B : relation (A → B → Prop) := λ P Q, ∀ x y, P x y → Q x y.
 
-Definition refines `{Object Π Ω} {ω : Ω} (M M' : meta_configuration Π ω) : Prop := ∀ σ f, M σ f → M' σ f.
+Instance refines_Preorder A B : PreOrder (refines A B).
+Proof.
+  split; firstorder.
+Qed.
 
-Instance meta_configuration_SubsetEq Π {Ω} `{Object Π Ω} (ω : Ω) : SubsetEq (meta_configuration Π ω) := refines.
+(* Instance refines_Reflexive A B : Reflexive (refines A B).
+Proof. firstorder. Defined.
+
+Instance refines_Transitive A B : Transitive (refines A B).
+Proof. firstorder. Defined. *)
+
+Instance relation_SubsetEq A B : SubsetEq (A → B → Prop) := refines A B.
+
+Instance relation_SqSubsetEq A B : SqSubsetEq (A → B → Prop) := refines A B.
+
+Definition monotone `{SqSubsetEq A, SqSubsetEq B} (f : A → B) := ∀ x y : A, x ⊑ y → f x ⊑ f y.
 
 Inductive snoc_list (A : Type) : Type :=
   | Nil
@@ -154,7 +166,10 @@ Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) 
 
 Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) := Map.rebind π Idle f.
 
-Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (op : (type ω).(OP)) (π : Π) (arg : Value.t) : meta_configuration Π ω :=
+(* A meta configuration relates states of the implemented object and the status of each process *)
+Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
+
+(* Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (op : (type ω).(OP)) (π : Π) (arg : Value.t) (C : meta_configuration Π ω) : meta_configuration Π ω :=
   evolve_inv_intro σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
@@ -162,18 +177,54 @@ Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration �
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
     δ_many σ (invoke f π op arg) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
-    evolve_inv C op π arg σ' f'.
+    evolve_inv op π arg C σ' f'.
 
-Variant evolve `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) : meta_configuration Π ω :=
-  evolve_intro σ f πs σ' f' :
+Lemma evolve_inv_monotone `{EqDecision Π, Object Π Ω} {ω} (op : (type ω).(OP)) (π : Π) (arg : Value.t) : monotone (evolve_inv op π arg).
+Proof.
+  unfold monotone. intros x y Hless.
+  intros σ f Hevolve. inv Hevolve. econstructor; eauto.
+Qed. *)
+
+Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω → meta_configuration Π ω → meta_configuration Π ω :=
+  | evolve_inv C op arg σ f πs σ' f' :
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    f π = Idle →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many σ (invoke f π op arg) πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve π (Invoke op arg) C σ' f'
+  | evolve_intermediate C σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
     δ_many σ f πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
-    evolve C σ' f'.
+    evolve π Intermediate C σ' f'
+  | evolve_ret C res σ f πs σ' f' :
+    f π = Linearized res →
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many σ (ret f π) πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve π (Response res) C σ' f'.
 
-Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration Π ω) (π : Π) (res : Value.t) : meta_configuration Π ω :=
+(* Variant evolve_intermediate Π `{EqDecision Π, Object Π Ω} (ω : Ω) (C : meta_configuration Π ω) : meta_configuration Π ω :=
+  evolve_intermediate_intro σ f πs σ' f' :
+    (* If (σ, f) ∈ C *)
+    C σ f →
+    (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
+    δ_many σ f πs σ' f' →
+    (* Then (σ', f') is in the resulting metaconfiguration *)
+    evolve_intermediate Π ω C σ' f'. *)
+
+Lemma evolve_monotone `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) (l : line Π ω) : monotone (evolve π l).
+Proof.
+  unfold monotone. intros C C' Hrefines σ f Hevolve. inv Hevolve; econstructor; eauto.
+Qed.
+
+(* Variant evolve_ret `{EqDecision Π, Object Π Ω} (ω : Ω) (π : Π) (res : Value.t) (C : meta_configuration Π ω) : meta_configuration Π ω :=
   evolve_ret_intro σ f πs σ' f' :
     f π = Linearized res →
     (* If (σ, f) ∈ C *)
@@ -181,7 +232,13 @@ Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω} (C : meta_configuration �
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
     δ_many σ (ret f π) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
-    evolve_ret C π res σ' f'.
+    evolve_ret ω π res C σ' f'.
+
+Lemma evolve_ret_monotone `{EqDecision Π, Object Π Ω} (ω : Ω) (π : Π) (res : Value.t) : monotone (evolve_ret ω π res).
+Proof.
+  unfold monotone. intros x y Hless.
+  intros σ f Hevolve. inv Hevolve. econstructor; eauto.
+Qed. *)
 
 (* Definition atomic_run {Π Ω} `{Countable Π, Object Π Ω} (ϵ : states Π Ω) (ω : Ω) (l : line ω) : list (Π * line) :=
   Run (atomic_implementation ϵ ω). *)
@@ -217,6 +274,9 @@ Definition sem (C Π : Type) `{Countable Π, Object Π Ω} (ω : Ω) := C → Π
 Inductive Run {C Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (c₀ : C) (step : sem C Π ω) : run C Π ω → Prop :=
   | RunInitial : Run c₀ step (Initial c₀)
   | RunStep r π l c : Run c₀ step r → step (final r) π l c → Run c₀ step (Step r π l c).
+
+(** [invariant P] is true iff [P] is true for the final configuration of every run *)
+Definition invariant {C Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (c₀ : C) (step : sem C Π ω) (P : _ → Prop) : Prop := ∀ r, Run c₀ step r → P (final r).
 
 Module Atomic.
   Definition configuration (Π : Type) `{Countable Π, Object Π Ω} (ω : Ω) := ((type ω).(Σ) * (Π → status Π ω))%type.
@@ -255,78 +315,309 @@ Record configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀
   ϵ : states Π Ω;
 }.
 
-(* Definition outstanding_related `{Countable Π, Object Π Ω} (m : gmap Π (frame Π Ω)) (f : Π → status Π Ω) (π : Π) : Prop.  *)
-
 Arguments tracker : default implicits.
 Arguments outstanding : default implicits.
 Arguments ϵ : default implicits.
 
-Module Implementation.
+Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : relation (run (configuration Π Ω ω) Π ω) :=
+  | coupled_initial c : coupled (Initial c) (Initial c)
+  | coupled_step r r' π l tracker tracker' outstanding ϵ :
+    coupled r r' →
+    coupled
+      (Step r π l {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |})
+      (Step r' π l {| tracker := tracker'; outstanding := outstanding; ϵ := ϵ |}).
 
-  Section Run.
+(* Definition outstanding_related `{Countable Π, Object Π Ω} (m : gmap Π (frame Π Ω)) (f : Π → status Π Ω) (π : Π) : Prop. *)
 
-    Context {Π Ω₀ Ω} `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀}.
+Module Type Implementation.
 
-    Variable impl : Implementation Π Ω ω.
+    Parameters Π Ω₀ Ω : Type.
 
-    Definition initial_frame op arg :=
-      let proc := procedures impl op in
-      {|
-        pc := 0;
-        registers := singletonM proc.(param) arg;
-        proc := proc;
-      |}.
+    Parameter ω : Ω₀.
 
-    Variant step : configuration Π Ω ω → Π → line Π ω → configuration Π Ω ω → Prop :=
-      | step_invoke tracker outstanding π ϵ op arg :
-        outstanding !! π = None →
-        step 
-          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-          π
-          (Invoke op arg)
-          {| tracker := evolve_inv tracker op π arg; outstanding := <[π := initial_frame op arg]>outstanding; ϵ := ϵ |}
-      | step_intermediate tracker outstanding π ϵ ϵ' f f' :
-        (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
-        outstanding !! π = Some f →
-        step_procedure π ϵ f ϵ' (Next f') →
-        step
-          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-          π
-          Intermediate
-          {| tracker := evolve tracker; outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
-      | step_response tracker outstanding π ϵ ϵ' f v :
-        (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
-        outstanding !! π = Some f →
-        step_procedure π ϵ f ϵ' (Return v) →
-        step
-          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-          π
-          (Response v)
-          {| tracker := evolve_ret tracker π v; outstanding := delete π outstanding; ϵ := ϵ' |}.
+    Parameter impl : ∀ `{Countable Π, Object Π Ω₀, Object Π Ω}, Implementation Π Ω ω.
+
+End Implementation.
+
+Module Type Semantics.
+
+    Include Implementation.
+
+    Parameter step_tracker : ∀ `{Countable Π, Object Π Ω₀, Object Π Ω}, Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
+End Semantics.
+
+Module Augmented (Sem : Semantics).
+  Include Sem.
+
+  Section Augmented.
+
+  Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
+
+  Definition initial_frame op arg :=
+    let proc := procedures impl op in
+    {|
+      pc := 0;
+      registers := singletonM proc.(param) arg;
+      proc := proc;
+    |}.
+
+  Variant step : gmap Π (frame Π Ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Prop :=
+    | step_invoke outstanding π ϵ op arg :
+      outstanding !! π = None →
+      step outstanding ϵ π (Invoke op arg) (<[π := initial_frame op arg]>outstanding) ϵ
+    | step_intermediate outstanding π ϵ ϵ' f f' :
+      (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
+      outstanding !! π = Some f →
+      step_procedure π ϵ f ϵ' (Next f') →
+      step outstanding ϵ π Intermediate (<[π := f']>outstanding) ϵ'
+    | step_response outstanding π ϵ ϵ' f v :
+      (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
+      outstanding !! π = Some f →
+      step_procedure π ϵ f ϵ' (Return v) →
+      step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
 
     Variant initial_tracker : meta_configuration Π ω :=
       initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
 
     Definition run := run (configuration Π Ω ω) Π ω.
 
-    Definition Run := Run {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |} step.
+    Definition initial_configuration := {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |}.
 
-    Variant Behavior : snoc_list (Π * line Π ω) → Prop :=
-      | Behavior_intro (r : run) : Run r → Behavior (behavior r).
+    Variant step_augmented (c : configuration Π Ω ω) (π : Π) (l : line Π ω) : configuration Π Ω ω → Prop :=
+      | step_augmented_intro outstanding' ϵ' :
+        step c.(outstanding) c.(ϵ) π l outstanding' ϵ' →
+          step_augmented c π l {| tracker := step_tracker π l c.(tracker); ϵ := ϵ'; outstanding := outstanding' |}.
 
-  End Run.
+    Definition Run := Run initial_configuration step_augmented.
 
-End Implementation.
+    Definition invariant := invariant initial_configuration step_augmented.
+
+    End Augmented.
+End Augmented.
 
 (* Variant linearization `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) (atomic : run Π (sing ω) ω) : Prop :=
   linearization_intro : 
     Run impl r → Run (atomic_implementation ω impl.(initial_state)) atomic → behavior r = behavior atomic → linearization impl r atomic. *)
 
-Section Adequacy.
 
-  Context `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀}.
+Module PartialTracker (S : Semantics).
+  
+  (* Module Sem <: Semantics.
 
-  Variable impl : Implementation Π Ω ω.
+    Include Impl.
+
+    Definition step_tracker `{Countable Π, Object Π Ω₀, Object Π Ω} (C : meta_configuration Π ω) (π : Π) (l : line Π ω) (C' : meta_configuration Π ω) :=
+      C' ⊆ evolve π l C.
+
+  End Sem.
+
+  Include Augmented Sem. *)
+  
+  Include Augmented S.
+
+  Section Soundness.
+
+    Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
+
+    Variable refinement : ∀ (π : Π) (l : line Π ω) C, step_tracker π l C ⊆ evolve π l C.
+
+    Variant linearizable_run (r : run) σ f : Prop :=
+      linearizable_intro atomic :
+        Atomic.Run impl.(initial_state) atomic →
+          behavior r = behavior atomic →
+            final atomic = (σ, f) →
+              linearizable_run r σ f.
+
+    Definition tracker_sound (r : run) :=
+      ∀ σ f, (final r).(tracker) σ f → linearizable_run r σ f.
+
+    Lemma sound_linearizations r atomic σ σ' πs f f' :
+      Run r →
+        Atomic.Run impl.(initial_state) atomic →
+          behavior atomic = behavior r →
+            (final r).(tracker) σ f →
+              final atomic = (σ, f) →
+                δ_many σ f πs σ' f' →
+                  ∃ atomic',
+                    Atomic.Run impl.(initial_state) atomic' ∧
+                      behavior atomic' = behavior r ∧
+                        final atomic' = (σ', f').
+    Proof.
+      revert σ' f'. induction πs.
+      - intros. exists atomic. split.
+        + assumption.
+        + now inv H7.
+      - intros. inv H7. pose proof IHπs σ'0 f'0 as IH. eapply IH in H2; eauto.
+        destruct H2 as (atomic' & Hatomic & Hbehavior & Hfinal).
+        eexists (Step atomic' t Intermediate _).
+        split.
+        + econstructor; eauto. rewrite Hfinal. econstructor; eauto.
+        + now split.
+    Qed.
+
+    Lemma sound_invoke r π op arg c :
+      Run (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
+    Proof.
+      intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
+      apply refinement in H2. inv H2. generalize dependent f. generalize dependent σ. induction πs.
+      - intros. unfold tracker_sound in *. inv H12.
+        apply IH in H6. inv H6.
+        eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
+        + econstructor.
+          * assumption.
+          * rewrite H5. now econstructor. 
+        + simpl. now rewrite H3. 
+        + reflexivity.
+      - intros. inv H12. unfold tracker_sound in *. simpl in *.
+        apply IH in H6. inv H6. eapply IHπs in H5. inv H5.
+        eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
+        + econstructor.
+          * assumption.
+          * rewrite H12. simpl in *. econstructor; eauto.
+        + assumption.
+        + easy.
+    Qed.
+
+    Lemma step_intermediate_idempotent r π c σ f : 
+      Run (Step r π Intermediate c) → (final (Step r π Intermediate c)).(tracker) σ f → (final r).(tracker) σ f.
+    Proof.
+      intros. inv H2. inv H9. apply refinement in H3. inv H3. destruct r.
+      - (* Case that [r] consists of no steps: Impossible, as the first step taken by a run cannot be Intermediate *)
+        inv H6. simpl in *. inv H2.
+      - simpl in *. inv H6.
+
+
+    Lemma sound_intermediate r π c :
+      Full.Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
+    Proof.
+
+
+    Lemma sound_intermediate r π c :
+      Full.Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
+    Proof.
+      intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
+      rewrite <- H7 in H5. inv H5. generalize dependent f0. generalize dependent σ. induction πs.
+      - intros. unfold tracker_sound in *. simpl in *. inv H6.
+        apply IH in H3. inv H3. 
+        now apply linearizable_intro with (atomic := atomic).
+      - intros. inv H6. unfold tracker_sound in *.
+        apply IH in H3 as ?. inv H5. eapply IHπs in H3.
+        + admit.
+        + 
+        inv H3.
+        eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
+        + econstructor.
+          * assumption.
+          * rewrite H13. simpl in *. econstructor; eauto.
+        + assumption.
+        + easy.
+    Qed.
+
+    Lemma sound_response r π v c :
+      Implementation.Run impl (Step r π (Response v) c) → tracker_sound r → tracker_sound (Step r π (Response v) c).
+    Proof.
+      intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
+      generalize dependent f0. generalize dependent σ. induction πs.
+      - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H9.
+        apply IH in H7. inv H7.
+        eapply linearizable_intro with (atomic := Step atomic π (Response v) _).
+        + econstructor.
+          * assumption.
+          * rewrite H10. now econstructor. 
+        + simpl. now rewrite H9. 
+        + reflexivity.
+      - intros. inv H9. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
+        apply IH in H7. inv H5. eapply IHπs in H11. inv H11.
+        eapply linearizable_intro with (atomic := Step atomic t Intermediate _).
+        + econstructor.
+          * assumption.
+          * rewrite H10. simpl in *. econstructor; eauto.
+        + assumption.
+        + easy.
+    Qed.
+
+    (* Lemma sound r σ f :
+      FullTracker.Run impl r →
+        (final r).(tracker) σ f →
+          ∃ atomic,
+            Atomic.Run impl.(initial_state) atomic ∧ behavior atomic = behavior r ∧ final atomic = (σ, f).
+    Proof.
+      revert σ f. induction r.
+      - simpl. intros σ f Hrun Htracker. eexists (Initial _). split.
+        + econstructor.
+        + split.
+          * reflexivity.
+          * inv Hrun. simpl in *. now inv Htracker. 
+      - intros. simpl in *. inversion H2. subst.
+        inv H9. inv H5. pose proof H3 as Htracker. rewrite <- H8 in H3. inv H3.
+        + eapply IHr in H6 as (atomic & Hatomic & Hbehavior & Hfinal); eauto.
+          eapply sound_linearizations with (atomic := Step atomic π (Invoke op arg) _) in H2.
+          * shelve.
+          * econstructor; eauto. rewrite Hfinal. now econstructor.
+          * simpl. now rewrite Hbehavior.
+          * simpl. rewrite <- H8. econstructor.
+            -- eassumption.
+            -- assumption.
+            -- econstructor.
+          * reflexivity.
+          * eassumption.
+          Unshelve. simpl in *.
+          inv H2 as (atomic' & ? & ? & ?). exists atomic'. split.
+          -- assumption.
+          -- now split.
+        + eapply IHr in H6 as (atomic & Hatomic & Hbehavior & Hfinal).
+          eapply sound_linearizations with (atomic := Step atomic π (Invoke op arg) _) in H2.
+          * shelve.
+          * econstructor; eauto. rewrite Hfinal. now econstructor.
+          * simpl. now rewrite Hbehavior.
+          * simpl. rewrite <- H8. econstructor.
+            -- eassumption.
+            -- assumption.
+            -- econstructor.
+          * reflexivity.
+          * eassumption.
+          Unshelve. simpl in *.
+          inv H2 as (atomic' & ? & ? & ?). exists atomic'. split.
+          -- assumption.
+          -- now split.
+          
+
+
+        apply sound_invoke; auto.
+        + apply sound_intermediate; auto.
+        + apply sound_response; auto.
+    Qed. *)
+
+  End Soundness.
+
+End PartialTracker.
+
+Module FullTracker (Impl : Implementation).
+  
+  Module Sem <: Semantics.
+
+    Include Impl.
+
+    Variant step `{Countable Π, Object Π Ω₀, Object Π Ω} (C : meta_configuration Π ω) (π : Π) (l : line Π ω) : meta_configuration Π ω → Prop :=
+      full_tracker : step C π l (evolve π l C).
+
+    Definition step_tracker `{Countable Π, Object Π Ω₀, Object Π Ω} := step.
+
+  End Sem.
+
+  Include Augmented Sem.
+
+End FullTracker.
+
+
+Module Adequacy (Impl : Implementation).
+
+  Module Full := FullTracker Impl.
+  Module Partial := PartialTracker Impl.
+
+  Include Impl.
+
+  Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
 
   Variant linearizable_run (r : run (configuration Π Ω ω) Π ω) σ f : Prop :=
     linearizable_intro atomic :
@@ -338,46 +629,78 @@ Section Adequacy.
   Definition tracker_sound (r : run (configuration Π Ω ω) Π ω) :=
     ∀ σ f, (final r).(tracker) σ f → linearizable_run r σ f.
 
-  (* Lemma outstanding_linearizations_sound r σ' :
-    Implementation.Run impl r → tracker_sound r → ∀ σ f, δ_many  *)
+  Lemma sound_linearizations r atomic σ σ' πs f f' :
+    Full.Run r →
+      Atomic.Run impl.(initial_state) atomic →
+        behavior atomic = behavior r →
+          (final r).(tracker) σ f →
+            final atomic = (σ, f) →
+              δ_many σ f πs σ' f' →
+                ∃ atomic',
+                  Atomic.Run impl.(initial_state) atomic' ∧
+                    behavior atomic' = behavior r ∧
+                      final atomic' = (σ', f').
+  Proof.
+    revert σ' f'. induction πs.
+    - intros. exists atomic. split.
+      + assumption.
+      + now inv H7.
+    - intros. inv H7. pose proof IHπs σ'0 f'0 as IH. eapply IH in H2; eauto.
+      destruct H2 as (atomic' & Hatomic & Hbehavior & Hfinal).
+      eexists (Step atomic' t Intermediate _).
+      split.
+      + econstructor; eauto. rewrite Hfinal. econstructor; eauto.
+      + now split.
+  Qed.
 
   Lemma sound_invoke r π op arg c :
-    Implementation.Run impl (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
+    Full.Run (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
   Proof.
-    intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
-    generalize dependent f. generalize dependent σ. induction πs.
-    - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H7.
-      apply IH in H5. inv H5.
+    intros HRunStep IH. inv HRunStep. inv H7. inv H3.  unfold tracker_sound. simpl. intros.
+    rewrite <- H6 in H3. inv H3. generalize dependent f. generalize dependent σ. induction πs.
+    - intros. unfold tracker_sound in *. inv H13.
+      apply IH in H8. inv H8.
       eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
       + econstructor.
         * assumption.
-        * rewrite H8. now econstructor. 
-      + simpl. now rewrite H7. 
+        * rewrite H7. now econstructor. 
+      + simpl. now rewrite H5. 
       + reflexivity.
-    - intros. inv H7. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
-      apply IH in H5. inv H5. eapply IHπs in H10. inv H10.
+    - intros. inv H13. unfold tracker_sound in *. simpl in *.
+      apply IH in H8. inv H8. eapply IHπs in H7. inv H7.
       eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
       + econstructor.
         * assumption.
-        * rewrite H12. simpl in *. econstructor; eauto.
+        * rewrite H13. simpl in *. econstructor; eauto.
       + assumption.
       + easy.
   Qed.
 
+  Lemma step_intermediate_idempotent :
+
+
   Lemma sound_intermediate r π c :
-    Implementation.Run impl (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
+    Full.Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
   Proof.
-    intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H6.
-    generalize dependent f0. generalize dependent σ. induction πs.
-    - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H8.
-      apply IH in H7. inv H7. 
+
+
+  Lemma sound_intermediate r π c :
+    Full.Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
+  Proof.
+    intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
+    rewrite <- H7 in H5. inv H5. generalize dependent f0. generalize dependent σ. induction πs.
+    - intros. unfold tracker_sound in *. simpl in *. inv H6.
+      apply IH in H3. inv H3. 
       now apply linearizable_intro with (atomic := atomic).
-    - intros. inv H8. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
-      apply IH in H7. inv H7. eapply IHπs in H10. inv H10.
+    - intros. inv H6. unfold tracker_sound in *.
+      apply IH in H3 as ?. inv H5. eapply IHπs in H3.
+      + admit.
+      + 
+      inv H3.
       eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
       + econstructor.
         * assumption.
-        * rewrite H12. simpl in *. econstructor; eauto.
+        * rewrite H13. simpl in *. econstructor; eauto.
       + assumption.
       + easy.
   Qed.
@@ -405,18 +728,57 @@ Section Adequacy.
       + easy.
   Qed.
 
-  Lemma sound (r : run (configuration Π Ω ω) Π ω) : Implementation.Run impl r → tracker_sound r.
+  (* Lemma sound r σ f :
+    FullTracker.Run impl r →
+      (final r).(tracker) σ f →
+        ∃ atomic,
+          Atomic.Run impl.(initial_state) atomic ∧ behavior atomic = behavior r ∧ final atomic = (σ, f).
   Proof.
-    induction r.
-    - simpl. intros. unfold tracker_sound. intros. econstructor.
+    revert σ f. induction r.
+    - simpl. intros σ f Hrun Htracker. eexists (Initial _). split.
       + econstructor.
-      + constructor.
-      + inv H2. inv H3. reflexivity.
-    - intros. inversion H2. destruct l.
-      + apply sound_invoke; auto.
+      + split.
+        * reflexivity.
+        * inv Hrun. simpl in *. now inv Htracker. 
+    - intros. simpl in *. inversion H2. subst.
+      inv H9. inv H5. pose proof H3 as Htracker. rewrite <- H8 in H3. inv H3.
+      + eapply IHr in H6 as (atomic & Hatomic & Hbehavior & Hfinal); eauto.
+        eapply sound_linearizations with (atomic := Step atomic π (Invoke op arg) _) in H2.
+        * shelve.
+        * econstructor; eauto. rewrite Hfinal. now econstructor.
+        * simpl. now rewrite Hbehavior.
+        * simpl. rewrite <- H8. econstructor.
+          -- eassumption.
+          -- assumption.
+          -- econstructor.
+        * reflexivity.
+        * eassumption.
+        Unshelve. simpl in *.
+        inv H2 as (atomic' & ? & ? & ?). exists atomic'. split.
+        -- assumption.
+        -- now split.
+      + eapply IHr in H6 as (atomic & Hatomic & Hbehavior & Hfinal).
+        eapply sound_linearizations with (atomic := Step atomic π (Invoke op arg) _) in H2.
+        * shelve.
+        * econstructor; eauto. rewrite Hfinal. now econstructor.
+        * simpl. now rewrite Hbehavior.
+        * simpl. rewrite <- H8. econstructor.
+          -- eassumption.
+          -- assumption.
+          -- econstructor.
+        * reflexivity.
+        * eassumption.
+        Unshelve. simpl in *.
+        inv H2 as (atomic' & ? & ? & ?). exists atomic'. split.
+        -- assumption.
+        -- now split.
+        
+
+
+      apply sound_invoke; auto.
       + apply sound_intermediate; auto.
       + apply sound_response; auto.
-  Qed.
+  Qed. *)
 
   Definition tracker_complete r := 
     ∀ atomic σ f, 
@@ -618,9 +980,6 @@ Section Adequacy.
       Implementation.Run impl r →
         ∃ atomic, Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
 
-  (** [invariant P] is true iff [P] is true for the final configuration of every atomic run *)
-  Definition invariant (P : _ → Prop) : Prop := ∀ r, Implementation.Run impl r → P (final r).
-
   Lemma soundness : invariant (λ c, ∃ σ f, tracker c σ f) → linearizable.
   Proof.
     unfold linearizable, invariant. intros Hinv r Hrun.
@@ -648,69 +1007,20 @@ Section Adequacy.
     - exact soundness.
   Qed.
 
+  Lemma partial_full_coupled r r' :
+    Implementation.Run impl r → PartialTracker.Run impl r' → coupled r r' → (final r').(tracker) ⊆ (final r).(tracker).
+  Proof.
+    intros HRun HRunPartial Hcoupled. induction Hcoupled.
+    - reflexivity.
+    - simpl. inv HRun. inv HRunPartial.
+      apply IHHcoupled in H4 as IH; auto. clear H4 H5 IHHcoupled.
+      inv H7; inv H9; (rewrite <- H2 in IH; rewrite <- H3 in IH; simpl in *); etransitivity; eauto.
+      + now apply evolve_inv_monotone.
+      + now apply evolve_monotone.
+      + now apply evolve_ret_monotone.
+  Qed.
+
 End Adequacy.
-
-Module PartialTracker.
-
-  Section Run.
-
-    Context {Π Ω₀ Ω} `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀}.
-
-    Variable impl : Implementation Π Ω ω.
-
-    Definition initial_frame op arg :=
-      let proc := procedures impl op in
-      {|
-        pc := 0;
-        registers := singletonM proc.(param) arg;
-        proc := proc;
-      |}.
-
-    Variant step : configuration Π Ω ω → Π → line Π ω → configuration Π Ω ω → Prop :=
-      | step_invoke tracker tracker' outstanding π ϵ op arg :
-        outstanding !! π = None →
-        tracker' ⊆ evolve_inv tracker op π arg →
-        step 
-          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-          π
-          (Invoke op arg)
-          {| tracker := tracker'; outstanding := <[π := initial_frame op arg]>outstanding; ϵ := ϵ |}
-      | step_intermediate tracker tracker' outstanding π ϵ ϵ' f f' :
-        (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
-        outstanding !! π = Some f →
-        tracker' ⊆ evolve tracker →
-        step_procedure π ϵ f ϵ' (Next f') →
-        step
-          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-          π
-          Intermediate
-          {| tracker := tracker'; outstanding := <[π := f']>outstanding; ϵ := ϵ' |}
-      | step_response tracker tracker' outstanding π ϵ ϵ' f v :
-        (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
-        outstanding !! π = Some f →
-        tracker' ⊆ evolve_ret tracker π v →
-        step_procedure π ϵ f ϵ' (Return v) →
-        step
-          {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |}
-          π
-          (Response v)
-          {| tracker := tracker'; outstanding := delete π outstanding; ϵ := ϵ' |}.
-
-    Variant initial_tracker : meta_configuration Π ω :=
-      initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
-
-    Definition run := run (configuration Π Ω ω) Π ω.
-
-    Definition Run := Run {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |} step.
-
-    Variant Behavior : snoc_list (Π * line Π ω) → Prop :=
-      | Behavior_intro (r : run) : Run r → Behavior (behavior r).
-
-  End Run.
-
-End PartialTracker.
-
-
 
 Section LiftL.
 
