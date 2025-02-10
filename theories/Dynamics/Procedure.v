@@ -486,116 +486,46 @@ Module PartialTracker (S : Semantics).
         + reflexivity.
     Qed.
 
-    Lemma step_intermediate_idempotent r π c σ f : 
-      Run (Step r π Intermediate c) → (final (Step r π Intermediate c)).(tracker) σ f → (final r).(tracker) σ f.
-    Proof.
-      intros. inv H2. inv H9. apply refinement in H3. inv H3. destruct r.
-      - (* Case that [r] consists of no steps: Impossible, as the first step taken by a run cannot be Intermediate *)
-        inv H6. simpl in *. inv H2.
-      - simpl in *. inv H6. inv H11. simpl in *. inv H3.
-        + 
-
-
     Lemma sound_intermediate r π c :
-      Full.Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
+      Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
     Proof.
-
-
-    Lemma sound_intermediate r π c :
-      Full.Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
-    Proof.
-      intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
-      rewrite <- H7 in H5. inv H5. generalize dependent f0. generalize dependent σ. induction πs.
-      - intros. unfold tracker_sound in *. simpl in *. inv H6.
-        apply IH in H3. inv H3. 
-        now apply linearizable_intro with (atomic := atomic).
-      - intros. inv H6. unfold tracker_sound in *.
-        apply IH in H3 as ?. inv H5. eapply IHπs in H3.
-        + admit.
-        + 
-        inv H3.
-        eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
+      intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
+      apply refinement in H2. inv H2. induction H7.
+      - intros. unfold tracker_sound in *.
+        apply IH in H6. inv H6.
+        now eapply linearizable_intro with (atomic := atomic).
+      - intros. unfold tracker_sound in *. simpl in *.
+        apply IH in H6 as ?. inv H9. eapply IHδ_multi in H6. inv H6.
+        eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H13. simpl in *. econstructor; eauto.
+          * rewrite H14. simpl in *. econstructor; eauto.
         + assumption.
-        + easy.
+        + reflexivity.
     Qed.
 
     Lemma sound_response r π v c :
-      Implementation.Run impl (Step r π (Response v) c) → tracker_sound r → tracker_sound (Step r π (Response v) c).
+      Run (Step r π (Response v) c) → tracker_sound r → tracker_sound (Step r π (Response v) c).
     Proof.
-      intros HRunStep IH. inv HRunStep. inv H7. unfold tracker_sound. simpl. intros. inv H3.
-      generalize dependent f0. generalize dependent σ. induction πs.
-      - intros. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *. inv H9.
+      intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
+      apply refinement in H2. inv H2. remember (ret f1 π) in H8. induction H8.
+      - intros. unfold tracker_sound in *.
         apply IH in H7. inv H7.
         eapply linearizable_intro with (atomic := Step atomic π (Response v) _).
         + econstructor.
           * assumption.
-          * rewrite H10. now econstructor. 
-        + simpl. now rewrite H9. 
-        + reflexivity.
-      - intros. inv H9. unfold tracker_sound in *. rewrite <- H2 in IH. simpl in *.
-        apply IH in H7. inv H5. eapply IHπs in H11. inv H11.
-        eapply linearizable_intro with (atomic := Step atomic t Intermediate _).
+          * rewrite H8. now econstructor. 
+        + simpl. now rewrite H3. 
+        + simpl. reflexivity.
+      - intros. unfold tracker_sound in *. simpl in *.
+        apply IH in H7 as ?. inv H10. eapply IHδ_multi in H7; auto. inv H7.
+        eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H10. simpl in *. econstructor; eauto.
+          * rewrite H15. simpl in *. econstructor; eauto.
         + assumption.
-        + easy.
+        + reflexivity.
     Qed.
-
-    (* Lemma sound r σ f :
-      FullTracker.Run impl r →
-        (final r).(tracker) σ f →
-          ∃ atomic,
-            Atomic.Run impl.(initial_state) atomic ∧ behavior atomic = behavior r ∧ final atomic = (σ, f).
-    Proof.
-      revert σ f. induction r.
-      - simpl. intros σ f Hrun Htracker. eexists (Initial _). split.
-        + econstructor.
-        + split.
-          * reflexivity.
-          * inv Hrun. simpl in *. now inv Htracker. 
-      - intros. simpl in *. inversion H2. subst.
-        inv H9. inv H5. pose proof H3 as Htracker. rewrite <- H8 in H3. inv H3.
-        + eapply IHr in H6 as (atomic & Hatomic & Hbehavior & Hfinal); eauto.
-          eapply sound_linearizations with (atomic := Step atomic π (Invoke op arg) _) in H2.
-          * shelve.
-          * econstructor; eauto. rewrite Hfinal. now econstructor.
-          * simpl. now rewrite Hbehavior.
-          * simpl. rewrite <- H8. econstructor.
-            -- eassumption.
-            -- assumption.
-            -- econstructor.
-          * reflexivity.
-          * eassumption.
-          Unshelve. simpl in *.
-          inv H2 as (atomic' & ? & ? & ?). exists atomic'. split.
-          -- assumption.
-          -- now split.
-        + eapply IHr in H6 as (atomic & Hatomic & Hbehavior & Hfinal).
-          eapply sound_linearizations with (atomic := Step atomic π (Invoke op arg) _) in H2.
-          * shelve.
-          * econstructor; eauto. rewrite Hfinal. now econstructor.
-          * simpl. now rewrite Hbehavior.
-          * simpl. rewrite <- H8. econstructor.
-            -- eassumption.
-            -- assumption.
-            -- econstructor.
-          * reflexivity.
-          * eassumption.
-          Unshelve. simpl in *.
-          inv H2 as (atomic' & ? & ? & ?). exists atomic'. split.
-          -- assumption.
-          -- now split.
-          
-
-
-        apply sound_invoke; auto.
-        + apply sound_intermediate; auto.
-        + apply sound_response; auto.
-    Qed. *)
 
   End Soundness.
 
