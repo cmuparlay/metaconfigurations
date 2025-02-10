@@ -439,25 +439,24 @@ Module PartialTracker (S : Semantics).
     Definition tracker_sound (r : run) :=
       ∀ σ f, (final r).(tracker) σ f → linearizable_run r σ f.
 
-    Lemma sound_linearizations r atomic σ σ' πs f f' :
+    Lemma sound_linearizations r atomic σ σ' f f' :
       Run r →
         Atomic.Run impl.(initial_state) atomic →
           behavior atomic = behavior r →
             (final r).(tracker) σ f →
               final atomic = (σ, f) →
-                δ_multi σ f πs σ' f' →
+                δ_multi σ f σ' f' →
                   ∃ atomic',
                     Atomic.Run impl.(initial_state) atomic' ∧
                       behavior atomic' = behavior r ∧
                         final atomic' = (σ', f').
     Proof.
-      revert σ' f'. induction πs.
+      intros. induction H7.
       - intros. exists atomic. split.
         + assumption.
-        + now inv H7.
-      - intros. inv H7. pose proof IHπs σ'0 f'0 as IH. eapply IH in H2; eauto.
-        destruct H2 as (atomic' & Hatomic & Hbehavior & Hfinal).
-        eexists (Step atomic' t Intermediate _).
+        + now split.
+      - intros. pose proof IHδ_multi H5 H6 as (atomic' & Hatomic & Hbehavior & Hfinal). clear IHδ_multi.
+        eexists (Step atomic' _ Intermediate _).
         split.
         + econstructor; eauto. rewrite Hfinal. econstructor; eauto.
         + now split.
@@ -467,23 +466,24 @@ Module PartialTracker (S : Semantics).
       Run (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
     Proof.
       intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      apply refinement in H2. inv H2. generalize dependent f. generalize dependent σ. induction πs.
-      - intros. unfold tracker_sound in *. inv H12.
+      apply refinement in H2. inv H2. remember (invoke f0 π op arg) in H12. induction H12.
+      - intros. unfold tracker_sound in *.
         apply IH in H6. inv H6.
         eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
         + econstructor.
           * assumption.
           * rewrite H5. now econstructor. 
         + simpl. now rewrite H3. 
-        + reflexivity.
-      - intros. inv H12. unfold tracker_sound in *. simpl in *.
-        apply IH in H6. inv H6. eapply IHπs in H5. inv H5.
-        eapply linearizable_intro with (atomic := Step atomic0 t Intermediate _).
+        + simpl. reflexivity.
+      - intros. unfold tracker_sound in *. simpl in *.
+        apply IH in H6 as ?. inv H5. eapply IHδ_multi in H6. inv H6.
+        eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H12. simpl in *. econstructor; eauto.
+          * rewrite H14. simpl in *. econstructor; eauto.
         + assumption.
         + easy.
+        + reflexivity.
     Qed.
 
     Lemma step_intermediate_idempotent r π c σ f : 
