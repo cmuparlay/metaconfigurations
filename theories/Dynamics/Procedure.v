@@ -317,22 +317,6 @@ End Atomic.
   | idle_step_intermediate r π' c : idle π r → idle π (Step r π' Intermediate c)
   | idle_step_invoke : idle π r → π ≠ π' → idle π () *)
 
-Record configuration Π Ω `{Countable Π, Object Π Ω} := {
-  outstanding : gmap Π (frame Π Ω);
-  ϵ : states Π Ω;
-}.
-
-Arguments outstanding : default implicits.
-Arguments ϵ : default implicits.
-
-Record augmented_configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
-  base_configuration : configuration Π Ω;
-  tracker : meta_configuration Π ω;
-}.
-
-Arguments base_configuration : default implicits.
-Arguments tracker : default implicits.
-
 (* Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : relation (run (aumented_configuration Π Ω ω) Π ω) :=
   | coupled_initial c : coupled (Initial c) (Initial c)
   | coupled_step r r' π l tracker tracker' outstanding ϵ :
@@ -342,6 +326,17 @@ Arguments tracker : default implicits.
       (Step r' π l {| tracker := tracker'; outstanding := outstanding; ϵ := ϵ |}). *)
 
 Module Implementation.
+
+  Record configuration Π Ω `{Countable Π, Object Π Ω} := {
+    outstanding : gmap Π (frame Π Ω);
+    ϵ : states Π Ω;
+  }.
+
+  Arguments outstanding : default implicits.
+  Arguments ϵ : default implicits.
+
+  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω) Π ω.
+
   Section Semantics.
     Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
 
@@ -372,8 +367,6 @@ Module Implementation.
         step_procedure π ϵ f ϵ' (Return v) →
         step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
 
-    Definition run := run (configuration Π Ω) Π ω.
-
     Definition initial_configuration := {| outstanding := ∅; ϵ := impl.(initial_states) |}.
 
     Definition step_configuration c π l c' := step c.(outstanding) c.(ϵ) π l c'.(outstanding) c'.(ϵ).
@@ -385,6 +378,16 @@ Module Implementation.
 End Implementation.
 
 Module Augmented.
+
+  Record configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
+    base_configuration : Implementation.configuration Π Ω;
+    tracker : meta_configuration Π ω;
+  }.
+
+  Arguments base_configuration : default implicits.
+  Arguments tracker : default implicits.
+
+  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω ω) Π ω.
 
   Section Semantics.
 
@@ -420,13 +423,11 @@ Module Augmented.
       Variant initial_tracker : meta_configuration Π ω :=
         initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
 
-      Definition run := run (augmented_configuration Π Ω ω) Π ω.
-
       Definition initial_configuration := {| tracker := initial_tracker; base_configuration := Implementation.initial_configuration impl |}.
 
       Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
 
-      Variant step_augmented (c : augmented_configuration Π Ω ω) (π : Π) (l : line Π ω) : augmented_configuration Π Ω ω → Prop :=
+      Variant step_augmented (c : Augmented.configuration Π Ω ω) (π : Π) (l : line Π ω) : Augmented.configuration Π Ω ω → Prop :=
         | step_augmented_intro base :
           Implementation.step_configuration impl c.(base_configuration) π l base →
               step_augmented c π l {| tracker := step_tracker π l c.(tracker); base_configuration := base |}.
@@ -446,20 +447,24 @@ Module PartialTracker.
 
   Section Soundness.
 
-    Variables Π Ω₀ Ω : Type.
-
-    Variable ω : Ω₀.
+    Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
 
     Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
 
-    Parameter impl : Implementation Π Ω ω.
+    Variable impl : Implementation Π Ω ω.
 
     Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
 
     Variable refinement : ∀ (π : Π) (l : line Π ω) C, step_tracker π l C ⊆ evolve π l C.
 
+    Import Augmented.
+
+    Definition run := run Π Ω ω.
+
+    Definition Run := Run impl step_tracker.
+
     Variant linearizable_run (r : run) σ f : Prop :=
-      linearizable_intro atomic :
+      linearizable_intro (atomic : Atomic.run Π ω) :
         Atomic.Run impl.(initial_state) atomic →
           behavior r = behavior atomic →
             final atomic = (σ, f) →
@@ -495,7 +500,7 @@ Module PartialTracker.
       Run (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
     Proof.
       intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      apply refinement in H2. inv H2. remember (invoke f0 π op arg) in H12. induction H12.
+      apply refinement in H2. inv H2. remember (invoke f0 π op arg) in H14. induction H14.
       - intros. unfold tracker_sound in *.
         apply IH in H6. inv H6.
         eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
@@ -509,7 +514,7 @@ Module PartialTracker.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H14. simpl in *. econstructor; eauto.
+          * rewrite H16. simpl in *. econstructor; eauto.
         + assumption.
         + easy.
         + reflexivity.
@@ -524,11 +529,11 @@ Module PartialTracker.
         apply IH in H6. inv H6.
         now eapply linearizable_intro with (atomic := atomic).
       - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H6 as ?. inv H9. eapply IHδ_multi in H6. inv H6.
+        apply IH in H6 as ?. inv H10. eapply IHδ_multi in H6. inv H6.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H14. simpl in *. econstructor; eauto.
+          * rewrite H15. simpl in *. econstructor; eauto.
         + assumption.
         + reflexivity.
     Qed.
@@ -547,11 +552,11 @@ Module PartialTracker.
         + simpl. now rewrite H3. 
         + simpl. reflexivity.
       - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H7 as ?. inv H10. eapply IHδ_multi in H7; auto. inv H7.
+        apply IH in H7 as ?. inv H11. eapply IHδ_multi in H7; auto. inv H7.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H15. simpl in *. econstructor; eauto.
+          * rewrite H16. simpl in *. econstructor; eauto.
         + assumption.
         + reflexivity.
     Qed.
