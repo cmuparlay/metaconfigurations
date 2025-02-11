@@ -325,11 +325,12 @@ Record configuration Π Ω `{Countable Π, Object Π Ω} := {
 Arguments outstanding : default implicits.
 Arguments ϵ : default implicits.
 
-Record aumented_configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
+Record augmented_configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
   base_configuration : configuration Π Ω;
   tracker : meta_configuration Π ω;
 }.
 
+Arguments base_configuration : default implicits.
 Arguments tracker : default implicits.
 
 (* Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : relation (run (aumented_configuration Π Ω ω) Π ω) :=
@@ -342,13 +343,11 @@ Arguments tracker : default implicits.
 
 Module Implementation.
   Section Semantics.
-    Variables Π Ω₀ Ω : Type.
-
-    Variable ω : Ω₀.
+    Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
 
     Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
 
-    Parameter impl : Implementation Π Ω ω.
+    Variable impl : Implementation Π Ω ω.
 
     Definition initial_frame op arg :=
       let proc := procedures impl op in
@@ -385,61 +384,58 @@ Module Implementation.
   End Semantics.
 End Implementation.
 
-Module Semantics.
+Module Augmented.
 
   Section Semantics.
 
-  Variables Π Ω₀ Ω : Type.
+    Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
 
-  Variable ω : Ω₀.
+    Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
 
-  Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
+    Variable impl : Implementation Π Ω ω.
 
-  Parameter impl : Implementation Π Ω ω.
+    Definition initial_frame op arg :=
+      let proc := procedures impl op in
+      {|
+        pc := 0;
+        registers := singletonM proc.(param) arg;
+        proc := proc;
+      |}.
 
-  Definition initial_frame op arg :=
-    let proc := procedures impl op in
-    {|
-      pc := 0;
-      registers := singletonM proc.(param) arg;
-      proc := proc;
-    |}.
+    Variant step : gmap Π (frame Π Ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Prop :=
+      | step_invoke outstanding π ϵ op arg :
+        outstanding !! π = None →
+        step outstanding ϵ π (Invoke op arg) (<[π := initial_frame op arg]>outstanding) ϵ
+      | step_intermediate outstanding π ϵ ϵ' f f' :
+        (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        step_procedure π ϵ f ϵ' (Next f') →
+        step outstanding ϵ π Intermediate (<[π := f']>outstanding) ϵ'
+      | step_response outstanding π ϵ ϵ' f v :
+        (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        step_procedure π ϵ f ϵ' (Return v) →
+        step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
 
-  Variant step : gmap Π (frame Π Ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Prop :=
-    | step_invoke outstanding π ϵ op arg :
-      outstanding !! π = None →
-      step outstanding ϵ π (Invoke op arg) (<[π := initial_frame op arg]>outstanding) ϵ
-    | step_intermediate outstanding π ϵ ϵ' f f' :
-      (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
-      outstanding !! π = Some f →
-      step_procedure π ϵ f ϵ' (Next f') →
-      step outstanding ϵ π Intermediate (<[π := f']>outstanding) ϵ'
-    | step_response outstanding π ϵ ϵ' f v :
-      (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
-      outstanding !! π = Some f →
-      step_procedure π ϵ f ϵ' (Return v) →
-      step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
+      Variant initial_tracker : meta_configuration Π ω :=
+        initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
 
-    Variant initial_tracker : meta_configuration Π ω :=
-      initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
+      Definition run := run (augmented_configuration Π Ω ω) Π ω.
 
-    Definition run := run (configuration Π Ω ω) Π ω.
+      Definition initial_configuration := {| tracker := initial_tracker; base_configuration := Implementation.initial_configuration impl |}.
 
-    Definition initial_configuration := {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |}.
+      Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
 
-    Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
+      Variant step_augmented (c : augmented_configuration Π Ω ω) (π : Π) (l : line Π ω) : augmented_configuration Π Ω ω → Prop :=
+        | step_augmented_intro base :
+          Implementation.step_configuration impl c.(base_configuration) π l base →
+              step_augmented c π l {| tracker := step_tracker π l c.(tracker); base_configuration := base |}.
 
-    Variant step_augmented (c : configuration Π Ω ω) (π : Π) (l : line Π ω) : configuration Π Ω ω → Prop :=
-      | step_augmented_intro outstanding' ϵ' :
-        step c.(outstanding) c.(ϵ) π l outstanding' ϵ' →
-          step_augmented c π l {| tracker := step_tracker π l c.(tracker); ϵ := ϵ'; outstanding := outstanding' |}.
+      Definition Run := Run initial_configuration step_augmented.
 
-    Definition Run := Run initial_configuration step_augmented.
-
-    Definition invariant := invariant initial_configuration step_augmented.
-
+      Definition invariant := invariant initial_configuration step_augmented.
     End Semantics.
-End Semantics.
+End Augmented.
 
 (* Variant linearization `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) (atomic : run Π (sing ω) ω) : Prop :=
   linearization_intro : 
