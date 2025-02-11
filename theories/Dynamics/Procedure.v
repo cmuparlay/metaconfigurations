@@ -317,49 +317,90 @@ End Atomic.
   | idle_step_intermediate r π' c : idle π r → idle π (Step r π' Intermediate c)
   | idle_step_invoke : idle π r → π ≠ π' → idle π () *)
 
-Record configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
-  tracker : meta_configuration Π ω;
+Record configuration Π Ω `{Countable Π, Object Π Ω} := {
   outstanding : gmap Π (frame Π Ω);
   ϵ : states Π Ω;
 }.
 
-Arguments tracker : default implicits.
 Arguments outstanding : default implicits.
 Arguments ϵ : default implicits.
 
-Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : relation (run (configuration Π Ω ω) Π ω) :=
+Record aumented_configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
+  base_configuration : configuration Π Ω;
+  tracker : meta_configuration Π ω;
+}.
+
+Arguments tracker : default implicits.
+
+(* Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : relation (run (aumented_configuration Π Ω ω) Π ω) :=
   | coupled_initial c : coupled (Initial c) (Initial c)
   | coupled_step r r' π l tracker tracker' outstanding ϵ :
     coupled r r' →
     coupled
       (Step r π l {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |})
-      (Step r' π l {| tracker := tracker'; outstanding := outstanding; ϵ := ϵ |}).
+      (Step r' π l {| tracker := tracker'; outstanding := outstanding; ϵ := ϵ |}). *)
 
-(* Definition outstanding_related `{Countable Π, Object Π Ω} (m : gmap Π (frame Π Ω)) (f : Π → status Π Ω) (π : Π) : Prop. *)
+Module Implementation.
+  Section Semantics.
+    Variables Π Ω₀ Ω : Type.
 
-Module Type Implementation.
+    Variable ω : Ω₀.
 
-    Parameters Π Ω₀ Ω : Type.
+    Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
 
-    Parameter ω : Ω₀.
+    Parameter impl : Implementation Π Ω ω.
 
-    Parameter impl : ∀ `{Countable Π, Object Π Ω₀, Object Π Ω}, Implementation Π Ω ω.
+    Definition initial_frame op arg :=
+      let proc := procedures impl op in
+      {|
+        pc := 0;
+        registers := singletonM proc.(param) arg;
+        proc := proc;
+      |}
 
+    Variant step : gmap Π (frame Π Ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Prop :=
+      | step_invoke outstanding π ϵ op arg :
+        outstanding !! π = None →
+        step outstanding ϵ π (Invoke op arg) (<[π := initial_frame op arg]>outstanding) ϵ
+      | step_intermediate outstanding π ϵ ϵ' f f' :
+        (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        step_procedure π ϵ f ϵ' (Next f') →
+        step outstanding ϵ π Intermediate (<[π := f']>outstanding) ϵ'
+      | step_response outstanding π ϵ ϵ' f v :
+        (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
+        outstanding !! π = Some f →
+        step_procedure π ϵ f ϵ' (Return v) →
+        step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
+
+    Definition run := run (configuration Π Ω) Π ω.
+
+    Definition initial_configuration := {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |}.
+
+    Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
+
+    Variant step_augmented (c : configuration Π Ω ω) (π : Π) (l : line Π ω) : configuration Π Ω ω → Prop :=
+      | step_augmented_intro outstanding' ϵ' :
+        step c.(outstanding) c.(ϵ) π l outstanding' ϵ' →
+          step_augmented c π l {| tracker := step_tracker π l c.(tracker); ϵ := ϵ'; outstanding := outstanding' |}.
+
+    Definition Run := Run initial_configuration step_augmented.
+
+    Definition invariant := invariant inistial_configuration step_augmented.
+  End Semantics.
 End Implementation.
 
-Module Type Semantics.
+Module Semantics.
 
-    Include Implementation.
+  Section Semantics.
 
-    Parameter step_tracker : ∀ `{Countable Π, Object Π Ω₀, Object Π Ω}, Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
-End Semantics.
+  Variables Π Ω₀ Ω : Type.
 
-Module Augmented (Sem : Semantics).
-  Include Sem.
-
-  Section Augmented.
+  Variable ω : Ω₀.
 
   Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
+
+  Parameter impl : Implementation Π Ω ω.
 
   Definition initial_frame op arg :=
     let proc := procedures impl op in
@@ -391,6 +432,8 @@ Module Augmented (Sem : Semantics).
 
     Definition initial_configuration := {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |}.
 
+    Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
+
     Variant step_augmented (c : configuration Π Ω ω) (π : Π) (l : line Π ω) : configuration Π Ω ω → Prop :=
       | step_augmented_intro outstanding' ϵ' :
         step c.(outstanding) c.(ϵ) π l outstanding' ϵ' →
@@ -400,32 +443,27 @@ Module Augmented (Sem : Semantics).
 
     Definition invariant := invariant initial_configuration step_augmented.
 
-    End Augmented.
-End Augmented.
+    End Semantics.
+End Semantics.
 
 (* Variant linearization `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) (atomic : run Π (sing ω) ω) : Prop :=
   linearization_intro : 
     Run impl r → Run (atomic_implementation ω impl.(initial_state)) atomic → behavior r = behavior atomic → linearization impl r atomic. *)
 
 
-Module PartialTracker (S : Semantics).
-  
-  (* Module Sem <: Semantics.
-
-    Include Impl.
-
-    Definition step_tracker `{Countable Π, Object Π Ω₀, Object Π Ω} (C : meta_configuration Π ω) (π : Π) (l : line Π ω) (C' : meta_configuration Π ω) :=
-      C' ⊆ evolve π l C.
-
-  End Sem.
-
-  Include Augmented Sem. *)
-  
-  Include Augmented S.
+Module PartialTracker.
 
   Section Soundness.
 
+    Variables Π Ω₀ Ω : Type.
+
+    Variable ω : Ω₀.
+
     Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
+
+    Parameter impl : Implementation Π Ω ω.
+
+    Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
 
     Variable refinement : ∀ (π : Π) (l : line Π ω) C, step_tracker π l C ⊆ evolve π l C.
 
@@ -526,6 +564,18 @@ Module PartialTracker (S : Semantics).
         + assumption.
         + reflexivity.
     Qed.
+
+    Section StrongLinearizability.
+
+      Section Complete.
+
+      (* Linearization function mapping every run of the implementation to an atomic configuration
+         of one of its linearizations  *)
+      Variable L : ∀ r, Run r → { conf | ∃ atomic, linearization r atomic ∧ final atomic = conf }.
+
+      Lemma complete (r r' : run) : Run r → Run r' → coupled r r'
+  
+    End StrongLinearizability.
 
   End Soundness.
 
