@@ -356,7 +356,7 @@ Module Implementation.
         pc := 0;
         registers := singletonM proc.(param) arg;
         proc := proc;
-      |}
+      |}.
 
     Variant step : gmap Π (frame Π Ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Prop :=
       | step_invoke outstanding π ϵ op arg :
@@ -375,18 +375,13 @@ Module Implementation.
 
     Definition run := run (configuration Π Ω) Π ω.
 
-    Definition initial_configuration := {| tracker := initial_tracker; outstanding := ∅; ϵ := impl.(initial_states) |}.
+    Definition initial_configuration := {| outstanding := ∅; ϵ := impl.(initial_states) |}.
 
-    Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
+    Definition step_configuration c π l c' := step c.(outstanding) c.(ϵ) π l c'.(outstanding) c'.(ϵ).
 
-    Variant step_augmented (c : configuration Π Ω ω) (π : Π) (l : line Π ω) : configuration Π Ω ω → Prop :=
-      | step_augmented_intro outstanding' ϵ' :
-        step c.(outstanding) c.(ϵ) π l outstanding' ϵ' →
-          step_augmented c π l {| tracker := step_tracker π l c.(tracker); ϵ := ϵ'; outstanding := outstanding' |}.
+    Definition Run := Run initial_configuration step_configuration.
 
-    Definition Run := Run initial_configuration step_augmented.
-
-    Definition invariant := invariant inistial_configuration step_augmented.
+    Definition invariant := invariant initial_configuration step_configuration.
   End Semantics.
 End Implementation.
 
