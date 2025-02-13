@@ -8,122 +8,14 @@ Global Declare Scope dynamics_scope.
 
 Definition states (Π Ω : Type) `{Object Π Ω} := Map.dependent Ω (Σ ∘ type).
 
-Section DisjointUnion.
-
-  Context {Π Ω Ω' : Type}.
-
-  Context `{EqDecision Ω, Object Π Ω, EqDecision Ω', Object Π Ω'}.
-
-  Definition disjoint_union (ϵ : states Π Ω) (ϵ' : states Π Ω') : states Π (Ω + Ω') :=
-    λ ω,
-      match ω with
-      | inl ω => ϵ ω
-      | inr ω => ϵ' ω
-      end.
-
-  Notation "ϵ ⊎ ϵ'" := (disjoint_union ϵ ϵ').
-
-  Lemma rebind_union_distr_l ω σ ϵ ϵ' : rebind ω σ ϵ ⊎ ϵ' = rebind (inl ω) σ (ϵ ⊎ ϵ').
-  Proof.
-    extensionality ω'. destruct ω'.
-    - simpl. unfold rebind, disjoint_union. case_decide.
-      + destruct H1. case_decide.
-        * dependent destruction H1. reflexivity.
-        * contradiction.
-      + case_decide. 
-        * dependent destruction H2. contradiction.
-        * reflexivity.
-    - simpl. unfold rebind, disjoint_union. case_decide.
-      + dependent destruction H1.
-      + reflexivity.
-  Qed.
-
-  Lemma rebind_union_distr_r ω σ ϵ ϵ' : ϵ ⊎ rebind ω σ ϵ' = rebind (inr ω) σ (ϵ ⊎ ϵ').
-  Proof.
-    extensionality ω'. destruct ω'.
-    - simpl. unfold rebind, disjoint_union. case_decide.
-      + discriminate.
-      + reflexivity.
-    - simpl. unfold rebind, disjoint_union. case_decide.
-      + subst. case_decide. dependent destruction H1.
-        * reflexivity.
-        * contradiction.
-      + case_decide. dependent destruction H2.
-        * contradiction.
-        * reflexivity.
-  Qed.
-
-  Lemma lookup_union_distr ω ϵ ϵ' : Map.lookup ω ϵ = Map.lookup (inl ω) (ϵ ⊎ ϵ').
-  Proof. reflexivity. Qed.
-
-  Lemma union_inj ϵ₁ ϵ₁' ϵ₂ ϵ₂' : ϵ₁ ⊎ ϵ₁' = ϵ₂ ⊎ ϵ₂' → ϵ₁ = ϵ₂ ∧ ϵ₁' = ϵ₂'.
-  Proof.
-    intros. split; extensionality ω.
-    - eapply equal_f_dep with (x := inl ω) in H1. auto. 
-    - eapply equal_f_dep with (x := inr ω) in H1. auto.
-  Qed.
-
-  Definition πₗ (ϵ : states Π (Ω + Ω')) : states Π Ω := λ ω, ϵ (inl ω).
-
-  Definition πᵣ (ϵ : states Π (Ω + Ω')) : states Π Ω' := λ ω, ϵ (inr ω).
-
-  Lemma πₗ_union ϵ₁ ϵ₂ : πₗ (ϵ₁ ⊎ ϵ₂) = ϵ₁.
-  Proof.
-    extensionality ω. reflexivity.
-  Qed.
-
-  Lemma πᵣ_union ϵ₁ ϵ₂ : πᵣ (ϵ₁ ⊎ ϵ₂) = ϵ₂.
-  Proof.
-    extensionality ω. reflexivity.
-  Qed.
-
-  Lemma union_project ϵ : πₗ ϵ ⊎ πᵣ ϵ = ϵ.
-  Proof. extensionality ω. intuition. Qed.
-
-  Lemma πₗ_rebind_comm ω σ ϵ : πₗ (rebind (inl ω) σ ϵ) = rebind ω σ (πₗ ϵ).
-  Proof.
-    intros. extensionality ω'. unfold rebind. case_decide.
-    - subst. cbv. destruct (EqDecision1 ω' ω').
-      + dependent destruction e. reflexivity.
-      + contradiction.
-    - cbv. destruct (EqDecision1 ω ω').
-      + contradiction.
-      + reflexivity.
-  Qed.
-
-  Lemma πᵣ_rebind_comm ω σ ϵ : πᵣ (rebind (inr ω) σ ϵ) = rebind ω σ (πᵣ ϵ).
-  Proof.
-    intros. extensionality ω'. unfold rebind. case_decide.
-    - subst. cbv. destruct (EqDecision3 ω' ω').
-      + dependent destruction e. reflexivity.
-      + contradiction.
-    - cbv. destruct (EqDecision3 ω ω').
-      + contradiction.
-      + reflexivity.
-  Qed.
-
-  Lemma lookup_πₗ ω ϵ : Map.lookup ω (πₗ ϵ) = Map.lookup (inl ω) ϵ.
-  Proof. reflexivity. Qed.
-
-  Lemma lookup_πᵣ ω ϵ : Map.lookup ω (πᵣ ϵ) = Map.lookup (inr ω) ϵ.
-  Proof. reflexivity. Qed.
-
-  Lemma rebind_l_πᵣ ω ϵ σ : πᵣ ϵ = πᵣ (rebind (inl ω) σ ϵ).
-  Proof. extensionality ω'. reflexivity. Qed.
-
-  Lemma rebind_r_πₗ ω ϵ σ : πₗ ϵ = πₗ (rebind (inr ω) σ ϵ).
-  Proof. extensionality ω'. reflexivity. Qed.
-
-End DisjointUnion.
-
-Variant eval_binop : Term.bop → Value.t → Value.t → Value.t → Set :=
+Variant eval_binop : Term.bop → Value.t → Value.t → Value.t → Type :=
   | eval_add (n₁ n₂ : Z) : eval_binop Term.Add n₁ n₂ (n₁ + n₂)%Z
   | eval_sub (n₁ n₂ : Z) : eval_binop Term.Sub n₁ n₂ (n₁ - n₂)%Z
   | eval_mul (n₁ n₂ : Z) : eval_binop Term.Mul n₁ n₂ (n₁ * n₂)%Z
   | eval_or (b₁ b₂ : bool) : eval_binop Term.Or b₁ b₂ (b₁ || b₂)
   | eval_and (b₁ b₂ : bool) : eval_binop Term.And b₁ b₂ (b₁ && b₂).
 
-Variant eval_unop : Term.uop → Value.t → Value.t → Set :=
+Variant eval_unop : Term.uop → Value.t → Value.t → Type :=
   | eval_not (b : bool) : eval_unop Term.Not b (negb b).  
 
     (* match bop, v₁, v₂ with

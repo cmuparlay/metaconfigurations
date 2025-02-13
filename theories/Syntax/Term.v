@@ -3,14 +3,14 @@ Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
 From Metaconfigurations Require Import Object.
 
-Variant bop : Set :=
+Variant bop : Type :=
   | Add
   | Sub
   | Mul
   | And
   | Or.
 
-Variant uop : Set := Not.
+Variant uop : Type := Not.
 
 Declare Scope term_scope.
 

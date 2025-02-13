@@ -8,7 +8,7 @@ From Metaconfigurations Require Import
 From Metaconfigurations.Dynamics Require Import Term Stmt.
 From stdpp Require Import base decidable list stringmap gmap fin_maps.
 
-Record procedure (Π Ω : Type) `{Object Π Ω} := {
+Record procedure (Π Ω : Type) `{Object Π Ω} : Type := {
   param : string;
   body : list (Stmt.t Π Ω);
 }.
@@ -16,7 +16,7 @@ Record procedure (Π Ω : Type) `{Object Π Ω} := {
 Arguments param {_ _ _ _}.
 Arguments body {_ _ _ _}.
 
-Record frame (Π Ω : Type) `{Object Π Ω} := {
+Record frame (Π Ω : Type) `{Object Π Ω} : Type := {
   pc : nat;
   registers : stringmap Value.t;
   proc : procedure Π Ω;
@@ -66,26 +66,6 @@ Variant step_procedure {Π Ω} `{Object Π Ω} (π : Π) : states Π Ω → fram
     proc.(body) !! pc = Some s →
     ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
     step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ (Return v).
-
-Definition singleton_states `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : states Π (sig (eq ω)).
-Proof.
-  unfold states, dependent. intros [x P]. subst. simpl. exact ϵ₀.
-Qed.
-
-(* Definition atomic_implementation {Π Ω} `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : Implementation Π (sig (eq ω)) ω :=
-  {|
-    initial_state := ϵ₀;
-    initial_states := singleton_states ω ϵ₀;
-    procedures op :=
-      {|
-        param := "arg";
-        body :=
-          [
-            Assign "r" (Term.Invoke (exist (eq ω) ω (eq_refl ω)) op (Var "arg"));
-            Syntax.Stmt.Return (Var "r")
-          ]
-      |}
-  |}. *)
 
 Definition atomic_implementation {Π Ω} `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : Implementation Π (sing ω) ω.
 Proof.
@@ -177,6 +157,9 @@ Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π
 (* A meta configuration relates states of the implemented object and the status of each process *)
 Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
 
+Definition singleton {A B} (R : A → B → Prop) (x : A) (y : B) : Prop :=
+  R x y ∧ ∀ x' y', R x' y' → x = x' ∧ y = y'.
+
 (* Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω} (op : (type ω).(OP)) (π : Π) (arg : Value.t) (C : meta_configuration Π ω) : meta_configuration Π ω :=
   evolve_inv_intro σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
@@ -257,6 +240,19 @@ Inductive run (C Π : Type) `{Object Π Ω} (ω : Ω) :=
 
 Arguments Initial {_ _ _ _ _ _}.
 Arguments Step {_ _ _ _ _ _}.
+
+Inductive prefix (C Π : Type) `{Object Π Ω} (ω : Ω) : run C Π ω → run C Π ω → Prop :=
+  | prefix_refl r : prefix C Π ω r r
+  | prefix_trans r r' π l c : prefix C Π ω r r' → prefix C Π ω r (Step r' π l c).
+
+Instance prefix_Preorder (C Π : Type) `{Object Π Ω} (ω : Ω) : PreOrder (prefix C Π ω).
+Proof.
+  split.
+  - unfold Reflexive. constructor.
+  - unfold Transitive. intros r₁ r₂ r₃ H₁ H₂. generalize dependent r₁.
+    induction H₂.
+    + tauto. 
+Qed.
 
 Fixpoint behavior {C Π : Type} `{Object Π Ω} {ω : Ω} (r : run C Π ω) : snoc_list (Π * line Π ω) :=
   match r with
@@ -438,9 +434,28 @@ Module Augmented.
     End Semantics.
 End Augmented.
 
+Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : Implementation.run Π Ω ω → Augmented.run Π Ω ω → Prop :=
+  | coupled_initial c tracker : coupled (Initial c) (Initial {| Augmented.tracker := tracker; Augmented.base_configuration := c|})
+  | coupled_step r r' π l tracker base :
+    coupled r r' →
+    coupled
+      (Step r π l base)
+      (Step r' π l {| Augmented.tracker := tracker; Augmented.base_configuration := base |}).
+
+(* relation (run (aumented_configuration Π Ω ω) Π ω) :=
+  | coupled_initial c : coupled (Initial c) (Initial c)
+  | coupled_step r r' π l tracker tracker' outstanding ϵ :
+    coupled r r' →
+    coupled
+      (Step r π l {| tracker := tracker; outstanding := outstanding; ϵ := ϵ |})
+      (Step r' π l {| tracker := tracker'; outstanding := outstanding; ϵ := ϵ |}). *)
+
 (* Variant linearization `{Countable Π, Object Π Ω₀, Object Π Ω} {ω : Ω₀} (impl : Implementation Π Ω ω) (r : run Π Ω ω) (atomic : run Π (sing ω) ω) : Prop :=
   linearization_intro : 
     Run impl r → Run (atomic_implementation ω impl.(initial_state)) atomic → behavior r = behavior atomic → linearization impl r atomic. *)
+
+
+Require Import Coq.Logic.Classical.
 
 
 Module PartialTracker.
@@ -565,11 +580,44 @@ Module PartialTracker.
 
       Section Complete.
 
+      Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
+    
+      (* Variant linearizable_run (r : run) σ f : Prop :=
+      linearizable_intro (atomic : Atomic.run Π ω) :
+        Atomic.Run impl.(initial_state) atomic →
+          behavior r = behavior atomic →
+            final atomic = (σ, f) →
+              linearizable_run r σ f. *)
+
       (* Linearization function mapping every run of the implementation to an atomic configuration
          of one of its linearizations  *)
-      Variable L : ∀ r, Run r → { conf | ∃ atomic, linearization r atomic ∧ final atomic = conf }.
+      Hypothesis L : ∀ r, Implementation.Run impl r → Atomic.configuration Π ω.
 
-      Lemma complete (r r' : run) : Run r → Run r' → coupled r r'
+      Hypothesis L_wf : ∀ r H, ∃ atomic, linearization r atomic ∧ final atomic = L r H.
+
+      Lemma foo : ¬ ∃
+
+      Lemma complete : 
+        (* There exists a tracker, such that *)
+        ∃ step_tracker' : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω, 
+          (* For all coupled runs r of the implementation and augmented runs r' *)
+          ∀ r r' Hrun σ f,
+            Implementation.Run impl r →
+              Augmented.Run impl step_tracker' r' →
+                coupled r r' →
+                  L r Hrun = (σ, f) →
+                    singleton (final r').(tracker) σ f.
+      Proof.
+        apply NNPP. unfold "¬". intros.
+        pose proof not_ex_all_not _ _ H2. simpl in *.
+        apply H3. 
+        eexists.
+        -
+                  
+
+          True.
+      
+      (r r' : run) : Run r → Run r' → coupled r r'
   
     End StrongLinearizability.
 

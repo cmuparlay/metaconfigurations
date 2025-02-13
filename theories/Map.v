@@ -1,7 +1,7 @@
 From stdpp Require Import base decidable.
 Require Import Program.
 
-Definition dependent (K : Type) (V : K → Type) := ∀ k : K, V k.
+Definition dependent (K : Type) (V : K → Type) : Type := ∀ k : K, V k.
 
 Definition rebind {K : Type} {V : K → Type} `{EqDecision K} : 
   ∀ k : K, V k → dependent K V → dependent K V.
@@ -29,4 +29,4 @@ Qed.
 
 Definition t (K V : Type) := dependent K (λ _, V).
 
-Definition with_default {K V} (d : V) : t K V := λ _, d.
+Definition with_default {K V : Type} (d : V) : t K V := λ _, d.
