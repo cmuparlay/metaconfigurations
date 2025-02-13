@@ -251,8 +251,11 @@ Proof.
   - unfold Reflexive. constructor.
   - unfold Transitive. intros r₁ r₂ r₃ H₁ H₂. generalize dependent r₁.
     induction H₂.
-    + tauto. 
+    + tauto.
+    + intros. econstructor. auto.
 Qed.
+
+Instance run_SubsetEq (C Π : Type) `{Object Π Ω} (ω : Ω) : SqSubsetEq (run C Π ω).
 
 Fixpoint behavior {C Π : Type} `{Object Π Ω} {ω : Ω} (r : run C Π ω) : snoc_list (Π * line Π ω) :=
   match r with
@@ -375,9 +378,9 @@ End Implementation.
 
 Module Augmented.
 
-  Record configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
+  Record configuration Π Ω (A : Type) `{Countable Π, Object Π Ω} := {
     base_configuration : Implementation.configuration Π Ω;
-    tracker : meta_configuration Π ω;
+    augmentation_state : meta_configuration Π ω;
   }.
 
   Arguments base_configuration : default implicits.
