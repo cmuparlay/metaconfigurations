@@ -255,7 +255,7 @@ Proof.
     + intros. econstructor. auto.
 Qed.
 
-Instance run_SubsetEq (C Π : Type) `{Object Π Ω} (ω : Ω) : SqSubsetEq (run C Π ω).
+Instance run_SubsetEq (C Π : Type) `{Object Π Ω} (ω : Ω) : SqSubsetEq (run C Π ω) := prefix C Π ω.
 
 Fixpoint behavior {C Π : Type} `{Object Π Ω} {ω : Ω} (r : run C Π ω) : snoc_list (Π * line Π ω) :=
   match r with
@@ -376,17 +376,28 @@ Module Implementation.
   End Semantics.
 End Implementation.
 
+      (* Variant initial_tracker : meta_configuration Π ω := *)
+        (* initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle). *)
+
 Module Augmented.
 
-  Record configuration Π Ω (A : Type) `{Countable Π, Object Π Ω} := {
+  Section Auxillary.
+
+  Context {Aux : Set}.
+
+  Variable Σ : Aux → Set.
+
+  Variable σ₀ : Map.dependent Aux Σ.
+
+  Record configuration Π Ω `{Countable Π, Object Π Ω} := {
     base_configuration : Implementation.configuration Π Ω;
-    augmentation_state : meta_configuration Π ω;
+    auxiliary_state aux : Σ aux;
   }.
 
   Arguments base_configuration : default implicits.
-  Arguments tracker : default implicits.
+  Arguments auxiliary_state : default implicits.
 
-  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω ω) Π ω.
+  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω) Π ω.
 
   Section Semantics.
 
@@ -419,17 +430,16 @@ Module Augmented.
         step_procedure π ϵ f ϵ' (Return v) →
         step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
 
-      Variant initial_tracker : meta_configuration Π ω :=
-        initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
+      Definition initial_configuration := {| auxiliary_state := σ₀; base_configuration := Implementation.initial_configuration impl |}.
 
-      Definition initial_configuration := {| tracker := initial_tracker; base_configuration := Implementation.initial_configuration impl |}.
+      (* Unlike normal objects, auxiliary objects can access other processes' local state *)
+      Variable step_auxiliary : ∀ aux : Aux, Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Σ aux → Prop.
 
-      Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
-
-      Variant step_augmented (c : Augmented.configuration Π Ω ω) (π : Π) (l : line Π ω) : Augmented.configuration Π Ω ω → Prop :=
-        | step_augmented_intro base :
+      Variant step_augmented (c : configuration Π Ω) (π : Π) (l : line Π ω) : configuration Π Ω → Prop :=
+        | step_augmented_intro base f :
           Implementation.step_configuration impl c.(base_configuration) π l base →
-              step_augmented c π l {| tracker := step_tracker π l c.(tracker); base_configuration := base |}.
+              (∀ aux : Aux, step_auxiliary aux c.(auxiliary_state) π l base.(Implementation.outstanding) base.(Implementation.ϵ) (f aux)) →
+              step_augmented c π l {| auxiliary_state := step_auxiliary π l c.(auxiliary_state); base_configuration := base |}.
 
       Definition Run := Run initial_configuration step_augmented.
 
@@ -635,7 +645,7 @@ Module FullTracker (Impl : Implementation).
     Include Impl.
 
     Variant step `{Countable Π, Object Π Ω₀, Object Π Ω} (C : meta_configuration Π ω) (π : Π) (l : line Π ω) : meta_configuration Π ω → Prop :=
-      full_tracker : step C π l (evolve π l C).
+      Aacker : step C π l (evolve π l C).
 
     Definition step_tracker `{Countable Π, Object Π Ω₀, Object Π Ω} := step.
 
