@@ -383,15 +383,15 @@ Module Augmented.
 
   Section Auxillary.
 
-  Context {Aux : Set}.
+  Context {Aux : Type}.
 
-  Variable Σ : Aux → Set.
+  Variable Σ : Aux → Type.
 
   Variable σ₀ : Map.dependent Aux Σ.
 
   Record configuration Π Ω `{Countable Π, Object Π Ω} := {
     base_configuration : Implementation.configuration Π Ω;
-    auxiliary_state aux : Σ aux;
+    auxiliary_state : Map.dependent Aux Σ;
   }.
 
   Arguments base_configuration : default implicits.
@@ -433,27 +433,31 @@ Module Augmented.
       Definition initial_configuration := {| auxiliary_state := σ₀; base_configuration := Implementation.initial_configuration impl |}.
 
       (* Unlike normal objects, auxiliary objects can access other processes' local state *)
-      Variable step_auxiliary : ∀ aux : Aux, Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Σ aux → Prop.
+      Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Map.dependent Aux Σ → Prop.
 
       Variant step_augmented (c : configuration Π Ω) (π : Π) (l : line Π ω) : configuration Π Ω → Prop :=
         | step_augmented_intro base f :
           Implementation.step_configuration impl c.(base_configuration) π l base →
-              (∀ aux : Aux, step_auxiliary aux c.(auxiliary_state) π l base.(Implementation.outstanding) base.(Implementation.ϵ) (f aux)) →
-              step_augmented c π l {| auxiliary_state := step_auxiliary π l c.(auxiliary_state); base_configuration := base |}.
+            step_auxiliary c.(auxiliary_state) π l base.(Implementation.outstanding) base.(Implementation.ϵ) f →
+              step_augmented c π l {| auxiliary_state := f; base_configuration := base |}.
 
       Definition Run := Run initial_configuration step_augmented.
 
       Definition invariant := invariant initial_configuration step_augmented.
     End Semantics.
+    End Auxillary.
 End Augmented.
 
-Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : Implementation.run Π Ω ω → Augmented.run Π Ω ω → Prop :=
+Arguments Augmented.base_configuration : default implicits.
+Arguments Augmented.auxiliary_state : default implicits.
+
+(* Inductive coupled `{Countable Π, Object Π Ω, Object Π Ω₀} {ω : Ω₀} : Implementation.run Π Ω ω → Augmented.run Π Ω ω → Prop :=
   | coupled_initial c tracker : coupled (Initial c) (Initial {| Augmented.tracker := tracker; Augmented.base_configuration := c|})
   | coupled_step r r' π l tracker base :
     coupled r r' →
     coupled
       (Step r π l base)
-      (Step r' π l {| Augmented.tracker := tracker; Augmented.base_configuration := base |}).
+      (Step r' π l {| Augmented.tracker := tracker; Augmented.base_configuration := base |}). *)
 
 (* relation (run (aumented_configuration Π Ω ω) Π ω) :=
   | coupled_initial c : coupled (Initial c) (Initial c)
@@ -481,15 +485,36 @@ Module PartialTracker.
 
     Variable impl : Implementation Π Ω ω.
 
-    Variable step_tracker : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω.
+    Context {Aux : Type}.
 
-    Variable refinement : ∀ (π : Π) (l : line Π ω) C, step_tracker π l C ⊆ evolve π l C.
+    Variable Σ : Aux → Type.
+
+    Variable σ₀ : Map.dependent Aux Σ.
+
+    (* The metaconfiguration *)
+    Variable M : Aux.
+
+    (* The metaconfiguration has the appropriate type *)
+    Hypothesis M_meta_configuration : Σ M = meta_configuration Π ω.
+
+    Hint Rewrite M_meta_configuration : core.
+
+    Definition coerce : Σ M → meta_configuration Π ω.
+    Proof.
+      rewrite M_meta_configuration. exact (λ x, x).
+    Defined.
+
+    Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Map.dependent Aux Σ → Prop.
+
+    Variable refinement : 
+      ∀ f π l frame ϵ f' ,
+        step_auxiliary f π l frame ϵ f' → coerce (f' M) ⊆ evolve π l (coerce (f M)).
 
     Import Augmented.
 
-    Definition run := run Π Ω ω.
+    Definition run := run Σ Π Ω ω.
 
-    Definition Run := Run impl step_tracker.
+    Definition Run := Run Σ σ₀ impl step_auxiliary.
 
     Variant linearizable_run (r : run) σ f : Prop :=
       linearizable_intro (atomic : Atomic.run Π ω) :
@@ -498,14 +523,16 @@ Module PartialTracker.
             final atomic = (σ, f) →
               linearizable_run r σ f.
 
+    Definition tracker (r : run) := coerce ((final r).(auxiliary_state) M).
+
     Definition tracker_sound (r : run) :=
-      ∀ σ f, (final r).(tracker) σ f → linearizable_run r σ f.
+      ∀ σ f, tracker r σ f → linearizable_run r σ f.
 
     Lemma sound_linearizations r atomic σ σ' f f' :
       Run r →
         Atomic.Run impl.(initial_state) atomic →
           behavior atomic = behavior r →
-            (final r).(tracker) σ f →
+            tracker r σ f →
               final atomic = (σ, f) →
                 δ_multi σ f σ' f' →
                   ∃ atomic',
@@ -528,21 +555,21 @@ Module PartialTracker.
       Run (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
     Proof.
       intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      apply refinement in H2. inv H2. remember (invoke f0 π op arg) in H14. induction H14.
+      eapply refinement in H2; eauto. inv H2. remember (invoke f1 π op arg) in H15. induction H15.
       - intros. unfold tracker_sound in *.
-        apply IH in H6. inv H6.
+        apply IH in H7. inversion H7.
         eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
         + econstructor.
           * assumption.
-          * rewrite H5. now econstructor. 
-        + simpl. now rewrite H3. 
-        + simpl. reflexivity.
+          * rewrite H6. now econstructor. 
+        + simpl. now rewrite H5. 
+        + simpl. now rewrite Heqs.
       - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H6 as ?. inv H5. eapply IHδ_multi in H6. inv H6.
+        apply IH in H7 as ?. inv H6. eapply IHδ_multi in H7. inv H7.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H16. simpl in *. econstructor; eauto.
+          * rewrite H17. simpl in *. econstructor; eauto.
         + assumption.
         + easy.
         + reflexivity.
@@ -552,16 +579,16 @@ Module PartialTracker.
       Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
     Proof.
       intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      apply refinement in H2. inv H2. induction H7.
+      eapply refinement in H2; eauto. inv H2. induction H8.
       - intros. unfold tracker_sound in *.
-        apply IH in H6. inv H6.
+        apply IH in H7. inv H7.
         now eapply linearizable_intro with (atomic := atomic).
       - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H6 as ?. inv H10. eapply IHδ_multi in H6. inv H6.
+        apply IH in H7 as ?. inv H11. eapply IHδ_multi in H7. inv H7.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H15. simpl in *. econstructor; eauto.
+          * rewrite H16. simpl in *. econstructor; eauto.
         + assumption.
         + reflexivity.
     Qed.
@@ -570,23 +597,23 @@ Module PartialTracker.
       Run (Step r π (Response v) c) → tracker_sound r → tracker_sound (Step r π (Response v) c).
     Proof.
       intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      apply refinement in H2. inv H2. remember (ret f1 π) in H8. induction H8.
+      eapply refinement in H2; eauto. inv H2. remember (ret f2 π) in H9. induction H9.
       - intros. unfold tracker_sound in *.
-        apply IH in H7. inv H7.
+        apply IH in H8. inversion H8.
         eapply linearizable_intro with (atomic := Step atomic π (Response v) _).
         + econstructor.
           * assumption.
-          * rewrite H8. now econstructor. 
-        + simpl. now rewrite H3. 
-        + simpl. reflexivity.
+          * rewrite H9. now econstructor. 
+        + simpl. now rewrite H5. 
+        + simpl. now rewrite Heqd.
       - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H7 as ?. inv H11. eapply IHδ_multi in H7; auto. inv H7.
+        apply IH in H8 as ?. inv H12. eapply IHδ_multi in H8; auto. inv H8.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
-          * rewrite H16. simpl in *. econstructor; eauto.
+          * rewrite H17. simpl in *. econstructor; eauto.
         + assumption.
-        + reflexivity.
+        + easy.
     Qed.
 
     Section StrongLinearizability.
