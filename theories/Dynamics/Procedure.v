@@ -65,7 +65,7 @@ Variant step_procedure {Π Ω} `{Object Π Ω} (π : Π) : states Π Ω → fram
   | step_return pc s ψ proc ϵ ϵ' v:
     proc.(body) !! pc = Some s →
     ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
-    step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ (Return v).
+    step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ' (Return v).
 
 Definition atomic_implementation {Π Ω} `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : Implementation Π (sing ω) ω.
 Proof.
@@ -616,7 +616,7 @@ Module PartialTracker.
         + easy.
     Qed.
 
-    Section StrongLinearizability.
+    (* Section StrongLinearizability.
 
       Section Complete.
 
@@ -635,8 +635,6 @@ Module PartialTracker.
 
       Hypothesis L_wf : ∀ r H, ∃ atomic, linearization r atomic ∧ final atomic = L r H.
 
-      Lemma foo : ¬ ∃
-
       Lemma complete : 
         (* There exists a tracker, such that *)
         ∃ step_tracker' : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω, 
@@ -646,7 +644,7 @@ Module PartialTracker.
               Augmented.Run impl step_tracker' r' →
                 coupled r r' →
                   L r Hrun = (σ, f) →
-                    singleton (final r').(tracker) σ f.
+                    singleton (tracker r') σ f.
       Proof.
         apply NNPP. unfold "¬". intros.
         pose proof not_ex_all_not _ _ H2. simpl in *.
@@ -659,11 +657,96 @@ Module PartialTracker.
       
       (r r' : run) : Run r → Run r' → coupled r r'
   
-    End StrongLinearizability.
+    End StrongLinearizability. *)
 
   End Soundness.
 
 End PartialTracker.
+
+Module ReadWrite.
+
+  Variant t := ReadWrite.
+
+  Definition Σ := Value.t.
+
+  Variant OP := Read | Write.
+
+  Variant δ (Π : Type) : Σ → Π → OP → Value.t → Σ → Value.t → Prop :=
+    | δ_read x π : δ Π x π Read Value.Unit x x
+    | δ_write x y π : δ Π x π Write y y Value.Unit.
+
+  Definition object_type Π := {|
+    Object.Σ := Σ;
+    Object.OP := OP;
+    Object.δ := δ Π;
+  |}.
+
+  Instance eq_dec : EqDecision t.
+  Proof. solve_decision. Defined.
+
+  Instance object Π : Object Π t := const (object_type Π).
+
+End ReadWrite.
+
+Module ReadCAS.
+
+  Variant t := ReadCAS.
+
+  Definition Σ := Value.t.
+
+  Variant OP := Read | CAS.
+
+  Variant δ (Π : Type) : Σ → Π → OP → Value.t → Σ → Value.t → Prop :=
+    | δ_read x π : δ Π x π Read Value.Unit x x
+    | δ_cas_succeed x y z π : 
+      x = y →
+        δ Π x π CAS (Value.Pair y z) z (Value.Bool true)
+    | δ_cas_fail x y z π :
+      x ≠ y →
+        δ Π x π CAS (Value.Pair y z) x (Value.Bool false).
+
+  Definition object_type Π := {|
+    Object.Σ := Σ;
+    Object.OP := OP;
+    Object.δ := δ Π;
+  |}.
+
+  Instance eq_dec : EqDecision t.
+  Proof. solve_decision. Qed.
+
+  Instance object Π : Object Π t := const (object_type Π).
+
+End ReadCAS.
+
+Section RWCAS.
+
+  Variable Π : Type.
+
+  Import ReadWrite ReadCAS.
+
+  Definition implementation : Implementation Π ReadCAS.t ReadWrite.ReadWrite.
+  Proof.
+    split.
+    - exact Value.Unit.
+    - exact (λ _, Value.Unit).
+    - intros op. destruct op eqn:H.
+      + split.
+        * exact "_".
+        * exact [
+            Assign "r" (Term.Invoke ReadCAS.ReadCAS ReadCAS.Read Term.Unit);
+            Syntax.Stmt.Return (Term.Var "r")
+          ].
+      + split.
+        * exact "y".
+        * exact [
+            Assign "x" (Term.Invoke ReadCAS.ReadCAS ReadCAS.Read Term.Unit);
+            Stmt.Invoke (Term.Invocation ReadCAS.ReadCAS ReadCAS.CAS (Term.Pair (Term.Var "x") (Term.Var "y")));
+            Syntax.Stmt.Return Term.Unit
+          ].
+    Defined.
+
+
+End RWCAS.
 
 Module FullTracker (Impl : Implementation).
   
