@@ -16,22 +16,21 @@ Record procedure (Π Ω : Type) `{Object Π Ω} : Type := {
 Arguments param {_ _ _ _}.
 Arguments body {_ _ _ _}.
 
-Record frame (Π Ω : Type) `{Object Π Ω} : Type := {
+Record frame Π {Ω} `{Object Π Ω} (ω : Ω) : Type := {
+  op : (type ω).(OP);
   pc : nat;
   registers : stringmap Value.t;
-  proc : procedure Π Ω;
 }.
 
 Arguments pc {_ _ _ _}.
 Arguments registers {_ _ _ _}.
-Arguments proc {_ _ _ _}.
 
-Variant signal (Π Ω : Type) `{Object Π Ω} :=
-  | Next (f : frame Π Ω) (* On next step, go to line [l] *)
+Variant signal Π {Ω} `{Object Π Ω} ω :=
+  | Next (f : frame Π ω) (* On next step, go to line [l] *)
   | Return (v : Value.t). (* Procedure has returned with value [v] *)
 
-Arguments Next {_ _ _ _}.
-Arguments Return {_ _ _ _}.
+Arguments Next   {_ _ _ _ _}.
+Arguments Return {_ _ _ _ _}.
 
 Record Implementation (Π Ω : Type) {Ω₀} `{Object Π Ω₀, Object Π Ω} (ω : Ω₀) := {
   initial_state : (type ω).(Σ);
@@ -46,26 +45,6 @@ Arguments initial_states : default implicits.
 Arguments procedures : default implicits.
 
 Local Open Scope dynamics_scope.
-
-Variant step_procedure {Π Ω} `{Object Π Ω} (π : Π) : states Π Ω → frame Π Ω → states Π Ω → signal Π Ω → Prop :=
-  | step_continue pc s ψ ψ' proc ϵ ϵ' :
-    (* If [pc] points to line containing statement [s] in [proc] *)
-    proc.(body) !! pc = Some s →
-    ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Continue ⟩ →
-    step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ' (Next {| pc := S pc; registers := ψ'; proc := proc |})
-  | step_goto pc pc' s ψ ψ' proc ϵ ϵ' :
-    (* If [pc] points to line containing statement [s] in [proc] *)
-    proc.(body) !! pc = Some s →
-    ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
-    step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ' (Next {| pc := pc'; registers := ψ'; proc := proc |})
-  | step_implicit_return pc ψ proc ϵ :
-    (* Control has fallen off end of procedure *)
-    proc.(body) !! pc = None →
-    step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ (Return ⊤ᵥ)
-  | step_return pc s ψ proc ϵ ϵ' v:
-    proc.(body) !! pc = Some s →
-    ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
-    step_procedure π ϵ {| pc := pc; registers := ψ; proc := proc |} ϵ' (Return v).
 
 Definition atomic_implementation {Π Ω} `{Object Π Ω} (ω : Ω) (ϵ₀ : (type ω).(Σ)) : Implementation Π (sing ω) ω.
 Proof.
@@ -140,8 +119,8 @@ Inductive δ_multi {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).
     (* And (σ', res) ∈ δ(σ, π, op, arg) *)
     (type ω).(δ) σ' π op arg σ'' res →
     δ_multi σ f (πs ,, π) σ'' (Map.rebind π (Linearized res) f').
-(* 
-Lemma δ_multi_trans {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} σ σ' σ'' (f f' f'' : Π → status Π ω) : 
+
+(* Lemma δ_multi_trans {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} σ σ' σ'' (f f' f'' : Π → status Π ω) : 
   δ_multi σ f σ' f' → δ_multi σ' f' σ'' f'' → δ_multi σ f σ'' f''.
 Proof.
   intros Hmany Hmany'. generalize dependent Hmany. revert σ f. induction Hmany'.
@@ -326,15 +305,15 @@ End Atomic.
 
 Module Implementation.
 
-  Record configuration Π Ω `{Countable Π, Object Π Ω} := {
-    outstanding : gmap Π (frame Π Ω);
+  Record configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
+    outstanding : gmap Π (frame Π ω);
     ϵ : states Π Ω;
   }.
 
   Arguments outstanding : default implicits.
   Arguments ϵ : default implicits.
 
-  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω) Π ω.
+  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω ω) Π ω.
 
   Section Semantics.
     Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
@@ -346,12 +325,34 @@ Module Implementation.
     Definition initial_frame op arg :=
       let proc := procedures impl op in
       {|
+        op := op;
         pc := 0;
         registers := singletonM proc.(param) arg;
-        proc := proc;
       |}.
 
-    Variant step : gmap Π (frame Π Ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Prop :=
+  Definition proc op := body (procedures impl op).
+
+  Variant step_procedure (π : Π) : states Π Ω → frame Π ω → states Π Ω → signal Π ω → Prop :=
+    | step_continue pc s ψ ψ' (op : (type ω).(OP)) ϵ ϵ' :
+      (* If [pc] points to line containing statement [s] in [proc] *)
+      proc op !! pc = Some s →
+      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Continue ⟩ →
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ' (Next {| pc := S pc; registers := ψ'; op := op |})
+    | step_goto pc pc' s ψ ψ' op ϵ ϵ' :
+      (* If [pc] points to line containing statement [s] in [proc] *)
+      proc op !! pc = Some s →
+      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ' (Next {| pc := pc'; registers := ψ'; op := op |})
+    | step_implicit_return pc ψ op ϵ :
+      (* Control has fallen off end of procedure *)
+      proc op !! pc = None →
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ (Return ⊤ᵥ)
+    | step_return pc s ψ op ϵ ϵ' v:
+      proc op !! pc = Some s →
+      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ' (Return v).
+
+    Variant step : gmap Π (frame Π ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π ω) → states Π Ω → Prop :=
       | step_invoke outstanding π ϵ op arg :
         outstanding !! π = None →
         step outstanding ϵ π (Invoke op arg) (<[π := initial_frame op arg]>outstanding) ϵ
@@ -366,7 +367,7 @@ Module Implementation.
         step_procedure π ϵ f ϵ' (Return v) →
         step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
 
-    Definition initial_configuration := {| outstanding := ∅; ϵ := impl.(initial_states) |}.
+    Definition initial_configuration : configuration Π Ω ω  := {| outstanding := ∅; ϵ := impl.(initial_states) |}.
 
     Definition step_configuration c π l c' := step c.(outstanding) c.(ϵ) π l c'.(outstanding) c'.(ϵ).
 
@@ -389,15 +390,15 @@ Module Augmented.
 
   Variable σ₀ : Map.dependent Aux Σ.
 
-  Record configuration Π Ω `{Countable Π, Object Π Ω} := {
-    base_configuration : Implementation.configuration Π Ω;
+  Record configuration Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := {
+    base_configuration : Implementation.configuration Π Ω ω;
     auxiliary_state : Map.dependent Aux Σ;
   }.
 
   Arguments base_configuration : default implicits.
   Arguments auxiliary_state : default implicits.
 
-  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω) Π ω.
+  Definition run Π Ω {Ω₀} `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := run (configuration Π Ω ω) Π ω.
 
   Section Semantics.
 
@@ -407,45 +408,22 @@ Module Augmented.
 
     Variable impl : Implementation Π Ω ω.
 
-    Definition initial_frame op arg :=
-      let proc := procedures impl op in
-      {|
-        pc := 0;
-        registers := singletonM proc.(param) arg;
-        proc := proc;
-      |}.
+    Definition initial_configuration := {| auxiliary_state := σ₀; base_configuration := Implementation.initial_configuration impl |}.
 
-    Variant step : gmap Π (frame Π Ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Prop :=
-      | step_invoke outstanding π ϵ op arg :
-        outstanding !! π = None →
-        step outstanding ϵ π (Invoke op arg) (<[π := initial_frame op arg]>outstanding) ϵ
-      | step_intermediate outstanding π ϵ ϵ' f f' :
-        (* If process [π] has an outstanding request for proecedure [proc], interrupted at line [pc] *)
-        outstanding !! π = Some f →
-        step_procedure π ϵ f ϵ' (Next f') →
-        step outstanding ϵ π Intermediate (<[π := f']>outstanding) ϵ'
-      | step_response outstanding π ϵ ϵ' f v :
-        (* If process [π] has an outstanding request for procedure [proc], interrupted at line [pc] *)
-        outstanding !! π = Some f →
-        step_procedure π ϵ f ϵ' (Return v) →
-        step outstanding ϵ π (Response v) (delete π outstanding) ϵ'.
+    (* Unlike normal objects, auxiliary objects can access other processes' local state *)
+    Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π ω) → states Π Ω → Map.dependent Aux Σ → Prop.
 
-      Definition initial_configuration := {| auxiliary_state := σ₀; base_configuration := Implementation.initial_configuration impl |}.
+    Variant step_augmented (c : configuration Π Ω ω) (π : Π) (l : line Π ω) : configuration Π Ω ω → Prop :=
+      | step_augmented_intro base f :
+        Implementation.step_configuration impl c.(base_configuration) π l base →
+          step_auxiliary c.(auxiliary_state) π l base.(Implementation.outstanding) base.(Implementation.ϵ) f →
+            step_augmented c π l {| auxiliary_state := f; base_configuration := base |}.
 
-      (* Unlike normal objects, auxiliary objects can access other processes' local state *)
-      Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Map.dependent Aux Σ → Prop.
+    Definition Run := Run initial_configuration step_augmented.
 
-      Variant step_augmented (c : configuration Π Ω) (π : Π) (l : line Π ω) : configuration Π Ω → Prop :=
-        | step_augmented_intro base f :
-          Implementation.step_configuration impl c.(base_configuration) π l base →
-            step_auxiliary c.(auxiliary_state) π l base.(Implementation.outstanding) base.(Implementation.ϵ) f →
-              step_augmented c π l {| auxiliary_state := f; base_configuration := base |}.
-
-      Definition Run := Run initial_configuration step_augmented.
-
-      Definition invariant := invariant initial_configuration step_augmented.
-    End Semantics.
-    End Auxillary.
+    Definition invariant := invariant initial_configuration step_augmented.
+  End Semantics.
+  End Auxillary.
 End Augmented.
 
 Arguments Augmented.base_configuration : default implicits.
@@ -504,7 +482,7 @@ Module PartialTracker.
       rewrite M_meta_configuration. exact (λ x, x).
     Defined.
 
-    Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π Ω) → states Π Ω → Map.dependent Aux Σ → Prop.
+    Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π ω) → states Π Ω → Map.dependent Aux Σ → Prop.
 
     Variable refinement : 
       ∀ f π l frame ϵ f' ,
@@ -714,13 +692,15 @@ Module ReadCAS.
   Instance eq_dec : EqDecision t.
   Proof. solve_decision. Qed.
 
-
   Instance object Π : Object Π t := const (object_type Π).
+
 End ReadCAS.
 
 Section RWCAS.
 
   Variable Π : Type.
+
+  Context `{EqDecision Π, Countable Π}.
 
   Import ReadWrite ReadCAS.
 
@@ -729,7 +709,7 @@ Section RWCAS.
     split.
     - exact Value.Unit.
     - exact (λ _, Value.Unit).
-    - intros op. destruct op eqn:H.
+    - intros op. destruct op eqn:?.
       + split.
         * exact "_".
         * exact [
@@ -745,8 +725,57 @@ Section RWCAS.
           ].
     Defined.
 
-End RWCAS.
+    Print implementation.
 
+    (* Only auxiliary state is metaconfiguration *)
+    Variant Aux := M.
+
+    (* Definition step_tracker_invoke
+      (C : meta_configuration Π ReadWrite.ReadWrite)
+      (π : Π)
+      (l : line Π ReadWrite.ReadWrite)
+      (frames : gmap Π (frame Π ReadCAS.t))
+      (C' : meta_configuration Π ReadWrite.ReadWrite) :   *)
+
+    Variant step_tracker_intermediate
+      (C : meta_configuration Π ReadWrite.ReadWrite) 
+      (π : Π) 
+      (frames : gmap Π (frame Π ReadCAS.t))
+      (C' : meta_configuration Π ReadWrite.ReadWrite) : Prop.
+
+    Definition step_tracker 
+      (C : meta_configuration Π ReadWrite.ReadWrite) 
+      (π : Π) 
+      (l : line Π ReadWrite.ReadWrite) 
+      (frames : gmap Π (frame Π ReadCAS.t)) 
+      (C' : meta_configuration Π ReadWrite.ReadWrite) : Prop.
+    Proof.
+      refine(
+        match l with
+        | Invoke _ _ | Response _ => ∀ σ f, C σ f ↔ evolve π l C σ f
+        | Intermediate => _
+        end
+      ).
+    Defined.
+
+    Definition step_auxiliary
+      (C : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.ReadWrite)) 
+      (π : Π)
+      (l : line Π ReadWrite.ReadWrite) 
+      (frames : gmap Π (frame Π ReadCAS.t))
+      (ϵ : states Π ReadCAS.t)
+      (C' : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.ReadWrite)) : Prop.
+    Proof.
+      destruct l eqn:Hline.
+      - exact (∀ σ f, C' M σ f ↔ evolve π l (C M) σ f).
+      - destruct (frames !! π) as [[pc registers proc] | ] eqn:Hframe.
+        +  
+        + exact False.
+
+
+
+
+End RWCAS.
 
 Module FullTracker (Impl : Implementation).
   
