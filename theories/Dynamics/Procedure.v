@@ -131,23 +131,23 @@ Notation "⟨ x ; y ; .. ; z ⟩" := (Snoc .. (Snoc (Snoc Nil x) y) .. z) : list
 
 Infix ",," := Snoc (at level 50, left associativity).
 
-Inductive δ_multi {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(Σ) → (Π → status Π ω) → (type ω).(Σ) → (Π → status Π ω) → Prop :=
-  | δ_multi_refl σ f : δ_multi σ f σ f
-  | δ_multi_step f σ π op arg σ' res σ'' f' :
-    δ_multi σ f σ' f' →
+Inductive δ_multi {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(Σ) → (Π → status Π ω) → snoc_list Π → (type ω).(Σ) → (Π → status Π ω) → Prop :=
+  | δ_multi_refl σ f : δ_multi σ f ⟨⟩ σ f
+  | δ_multi_step f σ π πs op arg σ' res σ'' f' :
+    δ_multi σ f πs σ' f' →
     (* if [π] has invoked [op(arg)], but not returned *)
     f' π = Pending op arg →
     (* And (σ', res) ∈ δ(σ, π, op, arg) *)
     (type ω).(δ) σ' π op arg σ'' res →
-    δ_multi σ f σ'' (Map.rebind π (Linearized res) f').
-
+    δ_multi σ f (πs ,, π) σ'' (Map.rebind π (Linearized res) f').
+(* 
 Lemma δ_multi_trans {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} σ σ' σ'' (f f' f'' : Π → status Π ω) : 
   δ_multi σ f σ' f' → δ_multi σ' f' σ'' f'' → δ_multi σ f σ'' f''.
 Proof.
   intros Hmany Hmany'. generalize dependent Hmany. revert σ f. induction Hmany'.
   - tauto.
   - econstructor; eauto.
-Qed.
+Qed. *)
 
 Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (op : (type ω).(OP)) (arg : Value.t) : Π → status Π ω :=
   Map.rebind π (Pending op arg) f.
@@ -177,27 +177,27 @@ Proof.
 Qed. *)
 
 Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω → meta_configuration Π ω → meta_configuration Π ω :=
-  | evolve_inv C op arg σ f σ' f' :
+  | evolve_inv C op arg σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
     f π = Idle →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_multi σ (invoke f π op arg) σ' f' →
+    δ_multi σ (invoke f π op arg) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve π (Invoke op arg) C σ' f'
-  | evolve_intermediate C σ f σ' f' :
+  | evolve_intermediate C σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_multi σ f σ' f' →
+    δ_multi σ f πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve π Intermediate C σ' f'
-  | evolve_ret C res σ f σ' f' :
+  | evolve_ret C res σ f πs σ' f' :
     f π = Linearized res →
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
-    δ_multi σ (ret f π) σ' f' →
+    δ_multi σ (ret f π) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve π (Response res) C σ' f'.
 
@@ -528,13 +528,13 @@ Module PartialTracker.
     Definition tracker_sound (r : run) :=
       ∀ σ f, tracker r σ f → linearizable_run r σ f.
 
-    Lemma sound_linearizations r atomic σ σ' f f' :
+    Lemma sound_linearizations r atomic σ σ' πs f f' :
       Run r →
         Atomic.Run impl.(initial_state) atomic →
           behavior atomic = behavior r →
             tracker r σ f →
               final atomic = (σ, f) →
-                δ_multi σ f σ' f' →
+                δ_multi σ f πs σ' f' →
                   ∃ atomic',
                     Atomic.Run impl.(initial_state) atomic' ∧
                       behavior atomic' = behavior r ∧
@@ -714,8 +714,8 @@ Module ReadCAS.
   Instance eq_dec : EqDecision t.
   Proof. solve_decision. Qed.
 
-  Instance object Π : Object Π t := const (object_type Π).
 
+  Instance object Π : Object Π t := const (object_type Π).
 End ReadCAS.
 
 Section RWCAS.
@@ -745,8 +745,8 @@ Section RWCAS.
           ].
     Defined.
 
-
 End RWCAS.
+
 
 Module FullTracker (Impl : Implementation).
   
