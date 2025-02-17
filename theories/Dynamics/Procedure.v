@@ -22,8 +22,9 @@ Record frame Π {Ω} `{Object Π Ω} (ω : Ω) : Type := {
   registers : stringmap Value.t;
 }.
 
-Arguments pc {_ _ _ _}.
-Arguments registers {_ _ _ _}.
+Arguments op {_ _ _ _ _}.
+Arguments pc {_ _ _ _ _}.
+Arguments registers {_ _ _ _ _}.
 
 Variant signal Π {Ω} `{Object Π Ω} ω :=
   | Next (f : frame Π ω) (* On next step, go to line [l] *)
@@ -109,6 +110,10 @@ Notation "⟨ x ⟩" := (Snoc Nil x) : list_scope.
 Notation "⟨ x ; y ; .. ; z ⟩" := (Snoc .. (Snoc (Snoc Nil x) y) .. z) : list_scope.
 
 Infix ",," := Snoc (at level 50, left associativity).
+
+Inductive SnocForall {A} (P : A → Prop) : snoc_list A → Prop :=
+  | SnocForall_nil : SnocForall P ⟨⟩
+  | SnocForall_cons x xs : SnocForall P xs → P x → SnocForall P (xs ,, x).
 
 Inductive δ_multi {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(Σ) → (Π → status Π ω) → snoc_list Π → (type ω).(Σ) → (Π → status Π ω) → Prop :=
   | δ_multi_refl σ f : δ_multi σ f ⟨⟩ σ f
@@ -643,7 +648,7 @@ End PartialTracker.
 
 Module ReadWrite.
 
-  Variant t := ReadWrite.
+  Variant t := Cell.
 
   Definition Σ := Value.t.
 
@@ -668,7 +673,7 @@ End ReadWrite.
 
 Module ReadCAS.
 
-  Variant t := ReadCAS.
+  Variant t := Cell.
 
   Definition Σ := Value.t.
 
@@ -704,7 +709,7 @@ Section RWCAS.
 
   Import ReadWrite ReadCAS.
 
-  Definition implementation : Implementation Π ReadCAS.t ReadWrite.ReadWrite.
+  Definition implementation : Implementation Π ReadCAS.t ReadWrite.Cell.
   Proof.
     split.
     - exact Value.Unit.
@@ -713,14 +718,14 @@ Section RWCAS.
       + split.
         * exact "_".
         * exact [
-            Assign "r" (Term.Invoke ReadCAS.ReadCAS ReadCAS.Read Term.Unit);
+            Assign "r" (Term.Invoke ReadCAS.Cell ReadCAS.Read Term.Unit);
             Syntax.Stmt.Return (Term.Var "r")
           ].
       + split.
         * exact "y".
         * exact [
-            Assign "x" (Term.Invoke ReadCAS.ReadCAS ReadCAS.Read Term.Unit);
-            Stmt.Invoke (Term.Invocation ReadCAS.ReadCAS ReadCAS.CAS (Term.Pair (Term.Var "x") (Term.Var "y")));
+            Assign "x" (Term.Invoke ReadCAS.Cell ReadCAS.Read Term.Unit);
+            Stmt.Invoke (Term.Invocation ReadCAS.Cell ReadCAS.CAS (Term.Pair (Term.Var "x") (Term.Var "y")));
             Syntax.Stmt.Return Term.Unit
           ].
     Defined.
@@ -738,10 +743,43 @@ Section RWCAS.
       (C' : meta_configuration Π ReadWrite.ReadWrite) :   *)
 
     Variant step_tracker_intermediate
-      (C : meta_configuration Π ReadWrite.ReadWrite) 
+      (C : meta_configuration Π ReadWrite.Cell) 
       (π : Π) 
-      (frames : gmap Π (frame Π ReadCAS.t))
-      (C' : meta_configuration Π ReadWrite.ReadWrite) : Prop.
+      (frames : gmap Π (frame Π ReadWrite.Cell)) 
+      (ϵ : states Π ReadCAS.t) : meta_configuration Π ReadWrite.Cell → Prop :=
+    | step_intermediate_write_read f :
+      frames !! π = Some f →
+      (* In [write] operation *)
+      f.(op) = ReadWrite.Write →
+      (* PC points to first line (the read) *)
+      f.(pc) = O →
+      (* Metaconfiguration does not change *)
+      step_tracker_intermediate C π frames ϵ C
+    | step_intermediate_read_read f :
+      frames !! π = Some f →
+      (* In [read] operation *)
+      f.(op) = ReadWrite.Read →
+      (* Performing the read on the base object *)
+      f.(pc) = O →
+      step_tracker_intermediate C π frames ϵ (λ σ f, f π = Linearized (ϵ ReadCAS.Cell) ∧ C σ f)
+    | step_intermediate_read_cas f :
+      frames !! π = Some f →
+      (* In write operation *)
+      f.(op) = ReadWrite.Write →
+      (* Executing CAS *)
+      f.(pc) = S O →
+      step_tracker_intermediate C π frames ϵ 
+        (λ σ f, 
+          ∃ πs σ' f',
+            C σ' f'
+            ∧ δ_multi σ' f' (πs ,, π) σ f 
+            ∧ SnocForall 
+              (λ π, ∃ f, 
+                frames !! π = Some f 
+                ∧ f.(op) = ReadWrite.Write 
+                ∧ f.(pc) = S O) πs).
+
+
 
     Definition step_tracker 
       (C : meta_configuration Π ReadWrite.ReadWrite) 
