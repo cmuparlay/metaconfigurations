@@ -416,12 +416,12 @@ Module Augmented.
     Definition initial_configuration := {| auxiliary_state := σ₀; base_configuration := Implementation.initial_configuration impl |}.
 
     (* Unlike normal objects, auxiliary objects can access other processes' local state *)
-    Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π ω) → states Π Ω → Map.dependent Aux Σ → Prop.
+    Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → Implementation.configuration Π Ω ω → Map.dependent Aux Σ → Prop.
 
     Variant step_augmented (c : configuration Π Ω ω) (π : Π) (l : line Π ω) : configuration Π Ω ω → Prop :=
       | step_augmented_intro base f :
         Implementation.step_configuration impl c.(base_configuration) π l base →
-          step_auxiliary c.(auxiliary_state) π l base.(Implementation.outstanding) base.(Implementation.ϵ) f →
+          step_auxiliary c.(auxiliary_state) π l base f →
             step_augmented c π l {| auxiliary_state := f; base_configuration := base |}.
 
     Definition Run := Run initial_configuration step_augmented.
@@ -489,11 +489,12 @@ Module PartialTracker.
       rewrite M_meta_configuration. exact (λ x, x).
     Defined.
 
-    Variable step_auxiliary : Map.dependent Aux Σ → Π → line Π ω → gmap Π (frame Π ω) → states Π Ω → Map.dependent Aux Σ → Prop.
+    Variable step_auxiliary : 
+      Map.dependent Aux Σ → Π → line Π ω → Implementation.configuration Π Ω ω → Map.dependent Aux Σ → Prop.
 
     Variable refinement : 
-      ∀ f π l frame ϵ f' ,
-        step_auxiliary f π l frame ϵ f' → coerce (f' M) ⊆ evolve π l (coerce (f M)).
+      ∀ f π l base f' ,
+        step_auxiliary f π l base f' → coerce (f' M) ⊆ evolve π l (coerce (f M)).
 
     Import Augmented.
 
@@ -607,7 +608,7 @@ Module PartialTracker.
 
     Variant Aux : Set := M | History.
 
-    Global Instance aux_eq_dec : EqDecision Aux.
+    Instance aux_eq_dec : EqDecision Aux.
     Proof. solve_decision. Defined.
 
     Definition Σ (aux : Aux) :=
