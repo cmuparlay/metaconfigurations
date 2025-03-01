@@ -460,22 +460,24 @@ Require Import Coq.Logic.Classical.
 
 Module PartialTracker.
 
+  Section Adequacy.
+
+  Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
+
+  Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
+
+  Variable impl : Implementation Π Ω ω.
+
   Section Soundness.
 
-    Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
-
-    Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
-
-    Variable impl : Implementation Π Ω ω.
-
     Context {Aux : Type}.
+
+    (* The metaconfiguration *)
+    Variable M : Aux.
 
     Variable Σ : Aux → Type.
 
     Variable σ₀ : Map.dependent Aux Σ.
-
-    (* The metaconfiguration *)
-    Variable M : Aux.
 
     (* The metaconfiguration has the appropriate type *)
     Hypothesis M_meta_configuration : Σ M = meta_configuration Π ω.
@@ -599,11 +601,22 @@ Module PartialTracker.
         + easy.
     Qed.
 
-    (* Section StrongLinearizability.
+  End Soundness.
 
-      Section Complete.
+  Section Completeness.
 
-      Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
+    Variant Aux : Set := M | History.
+
+    Global Instance aux_eq_dec : EqDecision Aux.
+    Proof. solve_decision. Defined.
+
+    Definition Σ (aux : Aux) :=
+      match aux with
+      | M => meta_configuration Π ω
+      | History => Implementation.run Π Ω ω
+      end.
+
+    Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
     
       (* Variant linearizable_run (r : run) σ f : Prop :=
       linearizable_intro (atomic : Atomic.run Π ω) :
@@ -640,9 +653,11 @@ Module PartialTracker.
       
       (r r' : run) : Run r → Run r' → coupled r r'
   
-    End StrongLinearizability. *)
+    End StrongLinearizability.
 
-  End Soundness.
+  End Completeness.
+
+End Adequacy.
 
 End PartialTracker.
 
@@ -742,11 +757,11 @@ Section RWCAS.
       (frames : gmap Π (frame Π ReadCAS.t))
       (C' : meta_configuration Π ReadWrite.ReadWrite) :   *)
 
-    Variant step_tracker_intermediate
+    Variant step_tracker
       (C : meta_configuration Π ReadWrite.Cell) 
-      (π : Π) 
+      (π : Π)
       (frames : gmap Π (frame Π ReadWrite.Cell)) 
-      (ϵ : states Π ReadCAS.t) : meta_configuration Π ReadWrite.Cell → Prop :=
+      (ϵ : states Π ReadCAS.t) : line Π ReadWrite.Cell → meta_configuration Π ReadWrite.Cell → Prop :=
     | step_intermediate_write_read f :
       frames !! π = Some f →
       (* In [write] operation *)
@@ -754,21 +769,21 @@ Section RWCAS.
       (* PC points to first line (the read) *)
       f.(pc) = O →
       (* Metaconfiguration does not change *)
-      step_tracker_intermediate C π frames ϵ C
+      step_tracker C π frames ϵ Intermediate C
     | step_intermediate_read_read f :
       frames !! π = Some f →
       (* In [read] operation *)
       f.(op) = ReadWrite.Read →
       (* Performing the read on the base object *)
       f.(pc) = O →
-      step_tracker_intermediate C π frames ϵ (λ σ f, f π = Linearized (ϵ ReadCAS.Cell) ∧ C σ f)
-    | step_intermediate_read_cas f :
+      step_tracker C π frames ϵ Intermediate (λ σ f, f π = Linearized (ϵ ReadCAS.Cell) ∧ C σ f)
+    | step_intermediate_write_cas f :
       frames !! π = Some f →
       (* In write operation *)
       f.(op) = ReadWrite.Write →
       (* Executing CAS *)
       f.(pc) = S O →
-      step_tracker_intermediate C π frames ϵ 
+      step_tracker C π frames ϵ Intermediate
         (λ σ f, 
           ∃ πs σ' f',
             C σ' f'
@@ -777,24 +792,20 @@ Section RWCAS.
               (λ π, ∃ f, 
                 frames !! π = Some f 
                 ∧ f.(op) = ReadWrite.Write 
-                ∧ f.(pc) = S O) πs).
-
-
+                ∧ f.(pc) = S O) πs)
+    |
 
     Definition step_tracker 
-      (C : meta_configuration Π ReadWrite.ReadWrite) 
+      (C : meta_configuration Π ReadWrite.Cell) 
       (π : Π) 
-      (l : line Π ReadWrite.ReadWrite) 
-      (frames : gmap Π (frame Π ReadCAS.t)) 
-      (C' : meta_configuration Π ReadWrite.ReadWrite) : Prop.
-    Proof.
-      refine(
+      (l : line Π ReadWrite.Cell) 
+      (frames : gmap Π (frame Π ReadWrite.Cell))
+      (ϵ : states Π ReadCAS.t)
+      (C' : meta_configuration Π ReadWrite.Cell) : Prop :=
         match l with
         | Invoke _ _ | Response _ => ∀ σ f, C σ f ↔ evolve π l C σ f
-        | Intermediate => _
-        end
-      ).
-    Defined.
+        | Intermediate => step_tracker_intermediate C π frames ϵ C'
+        end.
 
     Definition step_auxiliary
       (C : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.ReadWrite)) 
