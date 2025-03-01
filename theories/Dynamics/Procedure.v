@@ -608,6 +608,8 @@ Module PartialTracker.
 
   End Soundness.
 
+  Section StrongLinearizability.
+
   Section Completeness.
 
     Definition unique {A B} (P : A → B → Prop) : Prop := ∀ a b b', P a b → P a b' → b = b'.
@@ -650,36 +652,19 @@ Module PartialTracker.
       - exact (Initial (Implementation.initial_configuration impl)).
     Defined.
 
-    Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
-    
+    (* Check Augmented.invariant Σ σ₀ impl step_auxiliary (λ _, True). *)
 
-      Lemma complete : 
-        (* There exists a tracker, such that *)
-        ∃ step_tracker' : Π → line Π ω → meta_configuration Π ω → meta_configuration Π ω, 
-          (* For all coupled runs r of the implementation and augmented runs r' *)
-          ∀ r r' Hrun σ f,
-            Implementation.Run impl r →
-              Augmented.Run impl step_tracker' r' →
-                coupled r r' →
-                  L r Hrun = (σ, f) →
-                    singleton (tracker r') σ f.
-      Proof.
-        apply NNPP. unfold "¬". intros.
-        pose proof not_ex_all_not _ _ H2. simpl in *.
-        apply H3. 
-        eexists.
-        -
-                  
+    Import Augmented.
 
-          True.
-      
-      (r r' : run) : Run r → Run r' → coupled r r'
+    Lemma completeness :
+      ∀ r π l base f',
+        Run Σ σ₀ impl step_auxiliary r →
+          step_auxiliary (final r).(auxiliary_state) π l base f' → f' M ⊆ evolve π l ((final r).(auxiliary_state) M).
+    Admitted.
+
+    End Completeness.
   
     End StrongLinearizability.
-
-  End Completeness.
-
-End Adequacy.
 
 End PartialTracker.
 
