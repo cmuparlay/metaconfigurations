@@ -427,6 +427,18 @@ Module Augmented.
     Definition Run := Run initial_configuration step_augmented.
 
     Definition invariant := invariant initial_configuration step_augmented.
+
+    Fixpoint project r : Implementation.run Π Ω ω :=
+      match r with
+      | Initial c => Initial c.(base_configuration)
+      | Step r π l c => Step (project r) π l c.(base_configuration)
+      end.
+
+    (* Lemma project_sound r : Run r → Implementation.Run impl (project r).
+    Proof.
+      induction r; intros.
+      - destruct c. simpl in *. econstructor. *)
+
   End Semantics.
   End Auxillary.
 End Augmented.
@@ -660,11 +672,16 @@ Module PartialTracker.
       ∀ r π l base f',
         Run Σ σ₀ impl step_auxiliary r →
           step_auxiliary (final r).(auxiliary_state) π l base f' → f' M ⊆ evolve π l ((final r).(auxiliary_state) M).
+    Proof.
+      induction r eqn:?.
+      - intros. inv H3. apply L_wf in H2.
     Admitted.
-
+    
     End Completeness.
   
     End StrongLinearizability.
+
+End Adequacy.
 
 End PartialTracker.
 
