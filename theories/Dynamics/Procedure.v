@@ -492,15 +492,18 @@ Module PartialTracker.
     Variable step_auxiliary : 
       Map.dependent Aux Σ → Π → line Π ω → Implementation.configuration Π Ω ω → Map.dependent Aux Σ → Prop.
 
-    Variable refinement : 
-      ∀ f π l base f' ,
-        step_auxiliary f π l base f' → coerce (f' M) ⊆ evolve π l (coerce (f M)).
-
     Import Augmented.
 
     Definition run := run Σ Π Ω ω.
-
+  
     Definition Run := Run Σ σ₀ impl step_auxiliary.
+
+    Definition tracker (r : run) := coerce ((final r).(auxiliary_state) M).
+
+    Variable refinement : 
+      ∀ r π l base f',
+        Run r →
+          step_auxiliary (final r).(auxiliary_state) π l base f' → coerce (f' M) ⊆ evolve π l (tracker r).
 
     Variant linearizable_run (r : run) σ f : Prop :=
       linearizable_intro (atomic : Atomic.run Π ω) :
@@ -508,8 +511,6 @@ Module PartialTracker.
           behavior r = behavior atomic →
             final atomic = (σ, f) →
               linearizable_run r σ f.
-
-    Definition tracker (r : run) := coerce ((final r).(auxiliary_state) M).
 
     Definition tracker_sound (r : run) :=
       ∀ σ f, tracker r σ f → linearizable_run r σ f.
