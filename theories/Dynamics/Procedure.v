@@ -468,6 +468,9 @@ Module PartialTracker.
 
   Variable impl : Implementation Π Ω ω.
 
+  Variant initial_tracker : meta_configuration Π ω :=
+    initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
+
   Section Soundness.
 
     Context {Aux : Type}.
@@ -640,28 +643,15 @@ Module PartialTracker.
             | History => history
             end).
 
-    Variant step_auxiliary 
-      (aux : Map.dependent Aux Σ) (π : Π) (l : line Π ω) (base : Implementation.configuration Π Ω ω) : Map.dependent Aux Σ → Prop :=
-    | step_auxiliary_intro :
-      step_auxiliary σ π l base
-        (λ (a : Aux), 
-          match a with
-          | Step π l base)
+    Definition σ₀ : Map.dependent Aux Σ.
+    Proof.
+      intros [ | ]; cbn.
+      - exact initial_tracker.
+      - exact (Initial (Implementation.initial_configuration impl)).
+    Defined.
 
     Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
     
-      (* Variant linearizable_run (r : run) σ f : Prop :=
-      linearizable_intro (atomic : Atomic.run Π ω) :
-        Atomic.Run impl.(initial_state) atomic →
-          behavior r = behavior atomic →
-            final atomic = (σ, f) →
-              linearizable_run r σ f. *)
-
-      (* Linearization function mapping every run of the implementation to an atomic configuration
-         of one of its linearizations  *)
-      Hypothesis L : ∀ r, Implementation.Run impl r → Atomic.configuration Π ω.
-
-      Hypothesis L_wf : ∀ r H, ∃ atomic, linearization r atomic ∧ final atomic = L r H.
 
       Lemma complete : 
         (* There exists a tracker, such that *)
