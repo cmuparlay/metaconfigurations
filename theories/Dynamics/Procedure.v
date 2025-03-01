@@ -606,6 +606,18 @@ Module PartialTracker.
 
   Section Completeness.
 
+    Definition unique {A B} (P : A → B → Prop) : Prop := ∀ a b b', P a b → P a b' → b = b'.
+
+    Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
+
+    Hypothesis L : Implementation.run Π Ω ω → Atomic.configuration Π ω → Prop.
+
+    Hypothesis L_unique : unique L.
+
+    Hypothesis L_range : ∀ r, Implementation.Run impl r → ∃ conf, L r conf.
+
+    Hypothesis L_wf : ∀ r conf, L r conf → ∃ atomic, linearization r atomic ∧ final atomic = conf.
+
     Variant Aux : Set := M | History.
 
     Instance aux_eq_dec : EqDecision Aux.
@@ -616,6 +628,24 @@ Module PartialTracker.
       | M => meta_configuration Π ω
       | History => Implementation.run Π Ω ω
       end.
+
+    Variant step_auxiliary (aux : Map.dependent Aux Σ) (π : Π) (l : line Π ω) (base : Implementation.configuration Π Ω ω) : Map.dependent Aux Σ → Prop :=
+      step_auxiliary_intro :
+        step_auxiliary aux π l base 
+          (λ a,
+            let history := Step (aux History) π l base in
+            match a with
+            | M => λ σ f, L history (σ, f)
+            | History => history
+            end).
+
+    Variant step_auxiliary 
+      (aux : Map.dependent Aux Σ) (π : Π) (l : line Π ω) (base : Implementation.configuration Π Ω ω) : Map.dependent Aux Σ → Prop :=
+    | step_auxiliary_intro :
+      step_auxiliary σ π l base
+        (λ (a : Aux), 
+          match a with
+          | Step π l base)
 
     Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
     
