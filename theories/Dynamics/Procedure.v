@@ -862,18 +862,18 @@ Section RWCAS.
                 ∧ f.(pc) = S O) πs)
     | step_invoke op arg :
       frames !! π = None →
-      step_tracker C π frames ϵ (Invoke op arg) (map (λ σ f, (σ, invoke f π op arg)) C)
-    | step_response_write v f :
+      step_tracker C π frames ϵ (Invoke op arg) (evolve_inv π op arg C)
+    | step_response_write f :
       frames !! π = Some f →
       f.(op) = ReadWrite.Write →
       f.(pc) = 2 →
-      step_tracker C π frames ϵ (Response Value.Unit) (map (λ σ f, (σ, ret f π)) C)
-    | step_response_read f :
+      step_tracker C π frames ϵ (Response Value.Unit) (evolve_ret π Value.Unit C)
+    | step_response_read f v :
       frames !! π = Some f →
       f.(op) = ReadWrite.Read →
       f.(pc) = 1 →
-
-      step_tracker C π frames ϵ (Response v) (map (λ σ f, (σ, ret f π)) C).
+      f.(registers) !! "r" = Some v →
+      step_tracker C π frames ϵ (Response v) (evolve_ret π v C).
 
     Definition step_tracker 
       (C : meta_configuration Π ReadWrite.Cell) 
