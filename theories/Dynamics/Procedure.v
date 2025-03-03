@@ -236,8 +236,10 @@ Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω �
 
 Lemma evolve_monotone `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) (l : line Π ω) : monotone (evolve π l).
 Proof.
-  unfold monotone. intros C C' Hrefines σ f Hevolve.
-  -
+  unfold monotone. intros C C' Hrefines σ f Hevolve. destruct l; cbn in *.
+  - inv Hevolve. inv H0. repeat (econstructor; eauto).
+  - inv Hevolve. econstructor; eauto.
+  - inv Hevolve. inv H0. repeat (econstructor; eauto).
 Qed.
 
 (* Variant evolve_ret `{EqDecision Π, Object Π Ω} (ω : Ω) (π : Π) (res : Value.t) (C : meta_configuration Π ω) : meta_configuration Π ω :=
@@ -598,17 +600,17 @@ Module PartialTracker.
       Run (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
     Proof.
       intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      eapply refinement in H2; eauto. inv H2. remember (invoke f1 π op arg) in H15. induction H15.
+      eapply refinement in H2; eauto. inv H2. inv H5. remember (invoke f2 π op arg) in H6. induction H6.
       - intros. unfold tracker_sound in *.
-        apply IH in H7. inversion H7.
+        apply IH in H2. inversion H2.
         eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
         + econstructor.
           * assumption.
-          * rewrite H6. now econstructor. 
-        + simpl. now rewrite H5. 
+          * rewrite H8. now econstructor. 
+        + simpl. now rewrite H6. 
         + simpl. now rewrite Heqs.
       - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H7 as ?. inv H6. eapply IHδ_multi in H7. inv H7.
+        apply IH in H2 as ?. inv H10. eapply IHδ_multi in H2. inv H2.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
@@ -640,17 +642,17 @@ Module PartialTracker.
       Run (Step r π (Response v) c) → tracker_sound r → tracker_sound (Step r π (Response v) c).
     Proof.
       intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      eapply refinement in H2; eauto. inv H2. remember (ret f2 π) in H9. induction H9.
+      eapply refinement in H2; eauto. inv H2. inv H5. remember (ret f3 π) in H7. induction H7.
       - intros. unfold tracker_sound in *.
-        apply IH in H8. inversion H8.
+        apply IH in H2. inversion H2.
         eapply linearizable_intro with (atomic := Step atomic π (Response v) _).
         + econstructor.
           * assumption.
           * rewrite H9. now econstructor. 
-        + simpl. now rewrite H5. 
+        + simpl. now rewrite H7. 
         + simpl. now rewrite Heqd.
       - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H8 as ?. inv H12. eapply IHδ_multi in H8; auto. inv H8.
+        apply IH in H2 as ?. inv H12. eapply IHδ_multi in H2; auto. inv H2.
         eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
         + econstructor.
           * assumption.
