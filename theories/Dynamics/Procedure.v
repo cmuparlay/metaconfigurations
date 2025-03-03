@@ -674,7 +674,7 @@ Module PartialTracker.
           step_auxiliary (final r).(auxiliary_state) π l base f' → f' M ⊆ evolve π l ((final r).(auxiliary_state) M).
     Proof.
       induction r eqn:?.
-      - intros. inv H3. apply L_wf in H2.
+      (* Is actually trivial, does not require induction *)
     Admitted.
     
     End Completeness.
@@ -781,6 +781,12 @@ Section RWCAS.
       (frames : gmap Π (frame Π ReadCAS.t))
       (C' : meta_configuration Π ReadWrite.ReadWrite) :   *)
 
+    Variant map {A B C D} (f : A → B → (C * D)%type) (P : A → B → Prop) : C → D → Prop :=
+      | map_intro a b c d :
+        P a b →
+        f a b = (c, d) →
+        map f P c d.
+
     Variant step_tracker
       (C : meta_configuration Π ReadWrite.Cell) 
       (π : Π)
@@ -817,7 +823,8 @@ Section RWCAS.
                 frames !! π = Some f 
                 ∧ f.(op) = ReadWrite.Write 
                 ∧ f.(pc) = S O) πs)
-    |
+    | step_invoke op arg :
+      step_tracker C π frames ϵ (Invoke op arg) (map (λ σ f, (σ, invoke f π op arg)) C).
 
     Definition step_tracker 
       (C : meta_configuration Π ReadWrite.Cell) 
