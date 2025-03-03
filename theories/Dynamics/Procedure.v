@@ -160,6 +160,46 @@ Proof.
   intros σ f Hevolve. inv Hevolve. econstructor; eauto.
 Qed. *)
 
+Variant map {A B C D} (f : A → B → (C * D)%type) (P : A → B → Prop) : C → D → Prop :=
+  | map_intro a b c d :
+    P a b →
+    f a b = (c, d) →
+    map f P c d.
+
+Variant filter_map {A B C D} (f : A → B → option (C * D)%type) (P : A → B → Prop) : C → D → Prop :=
+  | filter_map_intro a b c d :
+    P a b →
+    f a b = Some (c, d) →
+    filter_map f P c d.
+
+Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) op arg (C : meta_configuration Π ω) : meta_configuration Π ω :=
+  | evolve_inv_intro σ f :
+    C σ f →
+    f π = Idle →
+    evolve_inv π op arg C σ (invoke f π op arg).
+
+Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) v (C : meta_configuration Π ω) : meta_configuration Π ω :=
+  | evolve_ret_intro σ f :
+    C σ f →
+    f π = Linearized v →
+    evolve_ret π v C σ (ret f π).
+
+Variant linearize_pending `{EqDecision Π, Object Π Ω} {ω : Ω} (C : meta_configuration Π ω) : meta_configuration Π ω :=
+  | linearize_pending_intro σ f πs σ' f' :
+    C σ f →
+    δ_multi σ f πs σ' f' →
+    linearize_pending C σ' f'.
+
+Definition evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) (l : line Π ω) (C : meta_configuration Π ω) : meta_configuration Π ω :=
+  match l with
+  | Invoke op arg =>
+    linearize_pending (evolve_inv π op arg C)
+  | Intermediate =>
+    linearize_pending C
+  | Response v => 
+    linearize_pending (evolve_ret π v C)
+  end.
+(* 
 Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω → meta_configuration Π ω → meta_configuration Π ω :=
   | evolve_inv C op arg σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
@@ -183,7 +223,7 @@ Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω �
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
     δ_multi σ (ret f π) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
-    evolve π (Response res) C σ' f'.
+    evolve π (Response res) C σ' f'. *)
 
 (* Variant evolve_intermediate Π `{EqDecision Π, Object Π Ω} (ω : Ω) (C : meta_configuration Π ω) : meta_configuration Π ω :=
   evolve_intermediate_intro σ f πs σ' f' :
@@ -196,7 +236,8 @@ Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω �
 
 Lemma evolve_monotone `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) (l : line Π ω) : monotone (evolve π l).
 Proof.
-  unfold monotone. intros C C' Hrefines σ f Hevolve. inv Hevolve; econstructor; eauto.
+  unfold monotone. intros C C' Hrefines σ f Hevolve.
+  -
 Qed.
 
 (* Variant evolve_ret `{EqDecision Π, Object Π Ω} (ω : Ω) (π : Π) (res : Value.t) (C : meta_configuration Π ω) : meta_configuration Π ω :=
@@ -781,12 +822,6 @@ Section RWCAS.
       (frames : gmap Π (frame Π ReadCAS.t))
       (C' : meta_configuration Π ReadWrite.ReadWrite) :   *)
 
-    Variant map {A B C D} (f : A → B → (C * D)%type) (P : A → B → Prop) : C → D → Prop :=
-      | map_intro a b c d :
-        P a b →
-        f a b = (c, d) →
-        map f P c d.
-
     Variant step_tracker
       (C : meta_configuration Π ReadWrite.Cell) 
       (π : Π)
@@ -824,8 +859,18 @@ Section RWCAS.
                 ∧ f.(op) = ReadWrite.Write 
                 ∧ f.(pc) = S O) πs)
     | step_invoke op arg :
+      frames !! π = None →
       step_tracker C π frames ϵ (Invoke op arg) (map (λ σ f, (σ, invoke f π op arg)) C)
-    | step_response v :
+    | step_response_write v f :
+      frames !! π = Some f →
+      f.(op) = ReadWrite.Write →
+      f.(pc) = 2 →
+      step_tracker C π frames ϵ (Response Value.Unit) (map (λ σ f, (σ, ret f π)) C)
+    | step_response_read f :
+      frames !! π = Some f →
+      f.(op) = ReadWrite.Read →
+      f.(pc) = 1 →
+
       step_tracker C π frames ϵ (Response v) (map (λ σ f, (σ, ret f π)) C).
 
     Definition step_tracker 
