@@ -421,12 +421,8 @@ Module Implementation.
 
     Definition Run := Run initial_configuration step_configuration.
 
-    Definition invariant := invariant initial_configuration step_configuration.
   End Semantics.
 End Implementation.
-
-      (* Variant initial_tracker : meta_configuration Π ω := *)
-        (* initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle). *)
 
 Module Augmented.
 
@@ -791,7 +787,7 @@ Section RWCAS.
 
   Import ReadWrite ReadCAS.
 
-  Definition implementation : Implementation Π ReadCAS.t ReadWrite.Cell.
+  Definition impl : Implementation Π ReadCAS.t ReadWrite.Cell.
   Proof.
     split.
     - exact Value.Unit.
@@ -812,97 +808,68 @@ Section RWCAS.
           ].
     Defined.
 
-    Print implementation.
-
     (* Only auxiliary state is metaconfiguration *)
-    Variant Aux := M.
-
-    (* Definition step_tracker_invoke
-      (C : meta_configuration Π ReadWrite.ReadWrite)
-      (π : Π)
-      (l : line Π ReadWrite.ReadWrite)
-      (frames : gmap Π (frame Π ReadCAS.t))
-      (C' : meta_configuration Π ReadWrite.ReadWrite) :   *)
+    Definition Aux := unit.
 
     Variant step_tracker
       (C : meta_configuration Π ReadWrite.Cell) 
       (π : Π)
-      (frames : gmap Π (frame Π ReadWrite.Cell)) 
-      (ϵ : states Π ReadCAS.t) : line Π ReadWrite.Cell → meta_configuration Π ReadWrite.Cell → Prop :=
+      (conf : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) : line Π ReadWrite.Cell → meta_configuration Π ReadWrite.Cell → Prop :=
     | step_intermediate_write_read f :
-      frames !! π = Some f →
+      conf.(Implementation.outstanding) !! π = Some f →
       (* In [write] operation *)
       f.(op) = ReadWrite.Write →
       (* PC points to first line (the read) *)
       f.(pc) = O →
       (* Metaconfiguration does not change *)
-      step_tracker C π frames ϵ Intermediate C
+      step_tracker C π conf Intermediate C
     | step_intermediate_read_read f :
-      frames !! π = Some f →
+      conf.(Implementation.outstanding) !! π = Some f →
       (* In [read] operation *)
       f.(op) = ReadWrite.Read →
       (* Performing the read on the base object *)
       f.(pc) = O →
-      step_tracker C π frames ϵ Intermediate (λ σ f, f π = Linearized (ϵ ReadCAS.Cell) ∧ C σ f)
+      step_tracker C π conf Intermediate (λ σ f, f π = Linearized (conf.(Implementation.ϵ) ReadCAS.Cell) ∧ C σ f)
     | step_intermediate_write_cas f :
-      frames !! π = Some f →
+      conf.(Implementation.outstanding) !! π = Some f →
       (* In write operation *)
       f.(op) = ReadWrite.Write →
       (* Executing CAS *)
       f.(pc) = S O →
-      step_tracker C π frames ϵ Intermediate
+      step_tracker C π conf Intermediate
         (λ σ f, 
           ∃ πs σ' f',
             C σ' f'
             ∧ δ_multi σ' f' (πs ,, π) σ f 
             ∧ SnocForall 
               (λ π, ∃ f, 
-                frames !! π = Some f 
+                conf.(Implementation.outstanding) !! π = Some f 
                 ∧ f.(op) = ReadWrite.Write 
                 ∧ f.(pc) = S O) πs)
     | step_invoke op arg :
-      frames !! π = None →
-      step_tracker C π frames ϵ (Invoke op arg) (evolve_inv π op arg C)
+      conf.(Implementation.outstanding) !! π = None →
+      step_tracker C π conf (Invoke op arg) (evolve_inv π op arg C)
     | step_response_write f :
-      frames !! π = Some f →
+      conf.(Implementation.outstanding) !! π = Some f →
       f.(op) = ReadWrite.Write →
       f.(pc) = 2 →
-      step_tracker C π frames ϵ (Response Value.Unit) (evolve_ret π Value.Unit C)
+      step_tracker C π conf (Response Value.Unit) (evolve_ret π Value.Unit C)
     | step_response_read f v :
-      frames !! π = Some f →
+      conf.(Implementation.outstanding) !! π = Some f →
       f.(op) = ReadWrite.Read →
       f.(pc) = 1 →
       f.(registers) !! "r" = Some v →
-      step_tracker C π frames ϵ (Response v) (evolve_ret π v C).
-
-    Definition step_tracker 
-      (C : meta_configuration Π ReadWrite.Cell) 
-      (π : Π) 
-      (l : line Π ReadWrite.Cell) 
-      (frames : gmap Π (frame Π ReadWrite.Cell))
-      (ϵ : states Π ReadCAS.t)
-      (C' : meta_configuration Π ReadWrite.Cell) : Prop :=
-        match l with
-        | Invoke _ _ | Response _ => ∀ σ f, C σ f ↔ evolve π l C σ f
-        | Intermediate => step_tracker_intermediate C π frames ϵ C'
-        end.
+      step_tracker C π conf (Response v) (evolve_ret π v C).
 
     Definition step_auxiliary
-      (C : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.ReadWrite)) 
+      (C : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.Cell)) 
       (π : Π)
-      (l : line Π ReadWrite.ReadWrite) 
-      (frames : gmap Π (frame Π ReadCAS.t))
-      (ϵ : states Π ReadCAS.t)
-      (C' : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.ReadWrite)) : Prop.
-    Proof.
-      destruct l eqn:Hline.
-      - exact (∀ σ f, C' M σ f ↔ evolve π l (C M) σ f).
-      - destruct (frames !! π) as [[pc registers proc] | ] eqn:Hframe.
-        +  
-        + exact False.
+      (l : line Π ReadWrite.Cell) 
+      (conf : Implementation.configuration Π ReadCAS.t ReadWrite.Cell)
+      (C' : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.Cell)) : Prop :=
+      step_tracker (C tt) π conf l (C' tt).
 
-
-
+    Definition inv := @Augmented.invariant unit (λ _, meta_configuration Π ReadWrite.Cell) (λ _ : unit, PartialTracker.initial_tracker impl) _ _ _ _ _ _ _ _ _ _ impl step_auxiliary (λ _, True).
 
 End RWCAS.
 
