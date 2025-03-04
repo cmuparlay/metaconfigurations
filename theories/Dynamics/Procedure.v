@@ -869,7 +869,22 @@ Section RWCAS.
       (C' : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.Cell)) : Prop :=
       step_tracker (C tt) π conf l (C' tt).
 
-    Definition inv := @Augmented.invariant unit (λ _, meta_configuration Π ReadWrite.Cell) (λ _ : unit, PartialTracker.initial_tracker impl) _ _ _ _ _ _ _ _ _ _ impl step_auxiliary (λ _, True).
+    Definition inv p :=
+      Augmented.invariant 
+        (λ _, meta_configuration Π ReadWrite.Cell)
+        (λ _ : unit, PartialTracker.initial_tracker impl)
+        impl
+        step_auxiliary
+        (λ c, p c.(Augmented.base_configuration) (c.(Augmented.auxiliary_state) tt)).
+
+    Import Implementation.
+
+    Lemma inv_state : inv (λ c Δ, ∀ σ f, Δ σ f → c.(ϵ) ReadCAS.Cell = σ).
+    Proof.
+      unfold inv, Augmented.invariant, invariant. intros. induction r.
+      - simpl. simpl in *. inv H0. inv H1. reflexivity.
+      - inv H0. simpl in *. destruct l.
+        + inv H7. inv H0. inv H2. simpl. simpl in *. apply IHr. inv H6.
 
 End RWCAS.
 
