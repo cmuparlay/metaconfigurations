@@ -725,6 +725,14 @@ End PartialTracker.
 
 Module FullTracker.
 
+  Definition Aux : Type := ().
+
+  Definition Σ Π `{Object Π Ω} (ω : Ω) : Aux → Type := const (meta_configuration Π ω).
+
+  Definition run Π Ω `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := Augmented.run (Σ Π ω) Π Ω ω.
+
+  Definition configuration Π Ω `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := Augmented.configuration (Σ Π) Π Ω ω.
+
   Section Adequacy.
 
   Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
@@ -735,220 +743,16 @@ Module FullTracker.
 
   Definition initial_tracker := PartialTracker.initial_tracker impl.
 
-  Section Soundness.
+  Definition σ₀ : Map.dependent Aux (Σ Π ω) := const initial_tracker.
 
-    Definition Aux : Type := ().
+  Variant step_auxiliary (C : Map.dependent Aux (Σ Π ω)) (π : Π) (l : line Π ω) (c : Implementation.configuration Π Ω ω) : Map.dependent Aux (Σ Π ω) → Prop :=
+    | step_auxiliary_intro : step_auxiliary C π l c (const (evolve π l (C tt))).
 
-    Definition M : Aux := ().
+  Definition Run := Augmented.Run (Σ Π ω) σ₀ impl step_auxiliary.
 
-    Definition Σ : Aux → Type := const (meta_configuration Π ω).
+  Definition tracker (c : Augmented.configuration Π Ω ω) := c.(Augmented.auxiliary_state) tt.
+  End Adequacy.
 
-    Definition σ₀ : Map.dependent Aux Σ := const initial_tracker.
-
-    Variant step_auxiliary (C : Map.dependent Aux Σ) (π : Π) (l : line Π ω) (c : Implementation.configuration Π Ω ω) : Map.dependent Aux Σ → Prop :=
-      | step_auxiliary_intro : step_auxiliary C π l c (const (evolve π l (C tt))).
-
-
-    (* The metaconfiguration has the appropriate type *)
-    Hypothesis M_meta_configuration : Σ M = meta_configuration Π ω.
-
-    Hint Rewrite M_meta_configuration : core.
-
-    Definition coerce : Σ M → meta_configuration Π ω.
-    Proof.
-      rewrite M_meta_configuration. exact (λ x, x).
-    Defined.
-
-    Variable step_auxiliary : 
-      Map.dependent Aux Σ → Π → line Π ω → Implementation.configuration Π Ω ω → Map.dependent Aux Σ → Prop.
-
-    Import Augmented.
-
-    Definition run := run Σ Π Ω ω.
-  
-    Definition Run := Run Σ σ₀ impl step_auxiliary.
-
-    Definition tracker (r : run) := coerce ((final r).(auxiliary_state) M).
-
-    Variable refinement : 
-      ∀ r π l base f',
-        Run r →
-          step_auxiliary (final r).(auxiliary_state) π l base f' → coerce (f' M) ⊆ evolve π l (tracker r).
-
-    Variant linearizable_run (r : run) σ f : Prop :=
-      linearizable_intro (atomic : Atomic.run Π ω) :
-        Atomic.Run impl.(initial_state) atomic →
-          behavior r = behavior atomic →
-            final atomic = (σ, f) →
-              linearizable_run r σ f.
-
-    Definition tracker_sound (r : run) :=
-      ∀ σ f, tracker r σ f → linearizable_run r σ f.
-
-    Lemma sound_linearizations r atomic σ σ' πs f f' :
-      Run r →
-        Atomic.Run impl.(initial_state) atomic →
-          behavior atomic = behavior r →
-            tracker r σ f →
-              final atomic = (σ, f) →
-                δ_multi σ f πs σ' f' →
-                  ∃ atomic',
-                    Atomic.Run impl.(initial_state) atomic' ∧
-                      behavior atomic' = behavior r ∧
-                        final atomic' = (σ', f').
-    Proof.
-      intros. induction H7.
-      - intros. exists atomic. split.
-        + assumption.
-        + now split.
-      - intros. pose proof IHδ_multi H5 H6 as (atomic' & Hatomic & Hbehavior & Hfinal). clear IHδ_multi.
-        eexists (Step atomic' _ Intermediate _).
-        split.
-        + econstructor; eauto. rewrite Hfinal. econstructor; eauto.
-        + now split.
-    Qed.
-
-    Lemma sound_invoke r π op arg c :
-      Run (Step r π (Invoke op arg) c) → tracker_sound r → tracker_sound (Step r π (Invoke op arg) c).
-    Proof.
-      intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      eapply refinement in H2; eauto. inv H2. inv H5. remember (invoke f2 π op arg) in H6. induction H6.
-      - intros. unfold tracker_sound in *.
-        apply IH in H2. inversion H2.
-        eapply linearizable_intro with (atomic := Step atomic π (Invoke op arg) _).
-        + econstructor.
-          * assumption.
-          * rewrite H8. now econstructor. 
-        + simpl. now rewrite H6. 
-        + simpl. now rewrite Heqs.
-      - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H2 as ?. inv H10. eapply IHδ_multi in H2. inv H2.
-        eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
-        + econstructor.
-          * assumption.
-          * rewrite H17. simpl in *. econstructor; eauto.
-        + assumption.
-        + easy.
-        + reflexivity.
-    Qed.
-
-    Lemma sound_intermediate r π c :
-      Run (Step r π Intermediate c) → tracker_sound r → tracker_sound (Step r π Intermediate c).
-    Proof.
-      intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      eapply refinement in H2; eauto. inv H2. induction H8.
-      - intros. unfold tracker_sound in *.
-        apply IH in H7. inv H7.
-        now eapply linearizable_intro with (atomic := atomic).
-      - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H7 as ?. inv H11. eapply IHδ_multi in H7. inv H7.
-        eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
-        + econstructor.
-          * assumption.
-          * rewrite H16. simpl in *. econstructor; eauto.
-        + assumption.
-        + reflexivity.
-    Qed.
-
-    Lemma sound_response r π v c :
-      Run (Step r π (Response v) c) → tracker_sound r → tracker_sound (Step r π (Response v) c).
-    Proof.
-      intros HRunStep IH. inv HRunStep. inv H7. inv H2. unfold tracker_sound. simpl. intros.
-      eapply refinement in H2; eauto. inv H2. inv H5. remember (ret f3 π) in H7. induction H7.
-      - intros. unfold tracker_sound in *.
-        apply IH in H2. inversion H2.
-        eapply linearizable_intro with (atomic := Step atomic π (Response v) _).
-        + econstructor.
-          * assumption.
-          * rewrite H9. now econstructor. 
-        + simpl. now rewrite H7. 
-        + simpl. now rewrite Heqd.
-      - intros. unfold tracker_sound in *. simpl in *.
-        apply IH in H2 as ?. inv H12. eapply IHδ_multi in H2; auto. inv H2.
-        eapply linearizable_intro with (atomic := Step atomic0 π0 Intermediate _).
-        + econstructor.
-          * assumption.
-          * rewrite H17. simpl in *. econstructor; eauto.
-        + assumption.
-        + easy.
-    Qed.
-
-  End Soundness.
-
-  Section StrongLinearizability.
-
-  Section Completeness.
-
-    Definition unique {A B} (P : A → B → Prop) : Prop := ∀ a b b', P a b → P a b' → b = b'.
-
-    Definition linearization (r : Implementation.run Π Ω ω) (atomic : Atomic.run Π ω) := Atomic.Run impl.(initial_state) atomic ∧ behavior r = behavior atomic.
-
-    Hypothesis L : Implementation.run Π Ω ω → Atomic.configuration Π ω → Prop.
-
-    Hypothesis L_unique : unique L.
-
-    Hypothesis L_range : ∀ r, Implementation.Run impl r → ∃ conf, L r conf.
-
-    Hypothesis L_wf : ∀ r conf, L r conf → ∃ atomic, linearization r atomic ∧ final atomic = conf.
-
-    Variant Aux : Set := M | History.
-
-    Instance aux_eq_dec : EqDecision Aux.
-    Proof. solve_decision. Defined.
-
-    Definition Σ (aux : Aux) :=
-      match aux with
-      | M => meta_configuration Π ω
-      | History => Implementation.run Π Ω ω
-      end.
-
-    Variant step_auxiliary (aux : Map.dependent Aux Σ) (π : Π) (l : line Π ω) (base : Implementation.configuration Π Ω ω) : Map.dependent Aux Σ → Prop :=
-      step_auxiliary_intro :
-        step_auxiliary aux π l base 
-          (λ a,
-            let history := Step (aux History) π l base in
-            match a with
-            | M => λ σ f, L history (σ, f)
-            | History => history
-            end).
-
-    Definition σ₀ : Map.dependent Aux Σ.
-    Proof.
-      intros [ | ]; cbn.
-      - exact initial_tracker.
-      - exact (Initial (Implementation.initial_configuration impl)).
-    Defined.
-
-    (* Check Augmented.invariant Σ σ₀ impl step_auxiliary (λ _, True). *)
-
-    Import Augmented.
-
-    Lemma completeness :
-      ∀ r π l base f',
-        Run Σ σ₀ impl step_auxiliary r →
-          step_auxiliary (final r).(auxiliary_state) π l base f' → f' M ⊆ evolve π l ((final r).(auxiliary_state) M).
-    Proof.
-      induction r eqn:?.
-      (* Is actually trivial, does not require induction *)
-    Admitted.
-    
-    End Completeness.
-  
-    End StrongLinearizability.
-
-End Adequacy.
-
-End FullTracker.
-
-Module FullTracker.
-  Section Adequacy.
-
-    Context {Π Ω₀ Ω : Type} {ω : Ω₀}.
-  
-    Context `{Countable Π, Object Π Ω₀, Object Π Ω}.
-  
-    Variable impl : Implementation Π Ω ω.
-  
 End FullTracker.
 
 Module ReadWrite.
@@ -1038,8 +842,11 @@ Section RWCAS.
     (* Only auxiliary state is metaconfiguration *)
     Definition Aux := unit.
 
-    Variant statuses (c : Imple) :=
-      | statuses_idle :
+    Check @FullTracker.configuration impl.
+
+    Variant S (c : FullTracker.configuration impl) : meta_configuration Π ω :=
+      | S_intro σ f : S c σ f.
+        
 
 
 
