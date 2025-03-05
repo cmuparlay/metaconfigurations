@@ -141,6 +141,8 @@ Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π
 (* A meta configuration relates states of the implemented object and the status of each process *)
 Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
 
+Definition inhabited {A B} (R : A → B → Prop) : Prop := ∃ a b, R a b.
+
 Definition singleton {A B} (R : A → B → Prop) (x : A) (y : B) : Prop :=
   R x y ∧ ∀ x' y', R x' y' → x = x' ∧ y = y'.
 
@@ -751,6 +753,9 @@ Module FullTracker.
   Definition Run := Augmented.Run (Σ Π ω) σ₀ impl step_auxiliary.
 
   Definition tracker (c : configuration Π Ω ω) := c.(Augmented.auxiliary_state) tt.
+
+  Definition invariant p := Augmented.invariant (Σ Π ω) σ₀ impl step_auxiliary (λ c, p c.(Augmented.base_configuration) (c.(Augmented.auxiliary_state) tt)).
+
   End Adequacy.
 
 End FullTracker.
@@ -845,125 +850,50 @@ Section RWCAS.
     Import Augmented.
     Import Implementation.
 
-    Variant tracker_inv (c : FullTracker.configuration Π ReadCAS.t ReadWrite.Cell) (π : Π) : status Π ReadWrite.Cell → Prop :=
-      | tracker_inv_idle : c.(base_configuration).(outstanding) !! π = None → tracker_inv c π Idle
+    Variant tracker_inv (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) (π : Π) : status Π ReadWrite.Cell → Prop :=
+      | tracker_inv_idle : c.(outstanding) !! π = None → tracker_inv c π Idle
       | tracker_inv_read_read f : 
-        c.(base_configuration).(outstanding) !! π = Some f →
+        c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Read →
         f.(pc) = 0 →
         tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Read Value.Unit)
       | tracker_inv_read_return f v :
-        c.(base_configuration).(outstanding) !! π = Some f →
+        c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Read →
         f.(pc) = 1 →
         f.(registers) !! "r" = Some v →
         tracker_inv c π (Linearized v)
       | tracker_inv_write_read f v :
-        c.(base_configuration).(outstanding) !! π = Some f →
+        c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Write →
         f.(pc) = 0 →
         f.(registers) !! "y" = Some v →
         tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Write v)
       | tracker_inv_write_cas_pending f v :
-        c.(base_configuration).(outstanding) !! π = Some f →
+        c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Write →
         f.(pc) = 1 →
         f.(registers) !! "y" = Some v →
         tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Write v)
       | tracker_inv_write_cas_linearized f v :
-        c.(base_configuration).(outstanding) !! π = Some f →
+        c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Write →
         f.(pc) = 1 →
         f.(registers) !! "x" = Some v →
-        c.(base_configuration).(ϵ) ReadCAS.Cell ≠ v →
+        c.(ϵ) ReadCAS.Cell ≠ v →
         tracker_inv c π (Linearized Value.Unit)
       | tracker_inv_write_response f :
-        c.(base_configuration).(outstanding) !! π = Some f →
+        c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Write →
         f.(pc) = 2 →
         tracker_inv c π (Linearized Value.Unit).
 
-      Variant S (c : FullTracker.configuration Π ReadCAS.t ReadWrite.Cell) : meta_configuration Π ReadWrite.Cell :=
-        | S_intro f : (∀ π : Π, tracker_inv c π (f π)) → S c (c.(base_configuration).(ϵ) ReadCAS.Cell) f.
+      Variant S (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) : meta_configuration Π ReadWrite.Cell :=
+        | S_intro f : (∀ π : Π, tracker_inv c π (f π)) → S c (c.(ϵ) ReadCAS.Cell) f.
 
-    Variant step_tracker
-      (C : meta_configuration Π ReadWrite.Cell) 
-      (π : Π)
-      (conf : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) : line Π ReadWrite.Cell → meta_configuration Π ReadWrite.Cell → Prop :=
-    | step_intermediate_write_read f :
-      conf.(Implementation.outstanding) !! π = Some f →
-      (* In [write] operation *)
-      f.(op) = ReadWrite.Write →
-      (* PC points to first line (the read) *)
-      f.(pc) = O →
-      (* Metaconfiguration does not change *)
-      step_tracker C π conf Intermediate C
-    | step_intermediate_read_read f :
-      conf.(Implementation.outstanding) !! π = Some f →
-      (* In [read] operation *)
-      f.(op) = ReadWrite.Read →
-      (* Performing the read on the base object *)
-      f.(pc) = O →
-      step_tracker C π conf Intermediate (λ σ f, f π = Linearized (conf.(Implementation.ϵ) ReadCAS.Cell) ∧ C σ f)
-    | step_intermediate_write_cas f :
-      conf.(Implementation.outstanding) !! π = Some f →
-      (* In write operation *)
-      f.(op) = ReadWrite.Write →
-      (* Executing CAS *)
-      f.(pc) = S O →
-      step_tracker C π conf Intermediate
-        (λ σ f, 
-          ∃ πs σ' f',
-            C σ' f'
-            ∧ δ_multi σ' f' (πs ,, π) σ f 
-            ∧ SnocForall 
-              (λ π, ∃ f, 
-                conf.(Implementation.outstanding) !! π = Some f 
-                ∧ f.(op) = ReadWrite.Write 
-                ∧ f.(pc) = S O) πs)
-    | step_invoke op arg :
-      conf.(Implementation.outstanding) !! π = None →
-      step_tracker C π conf (Invoke op arg) (evolve_inv π op arg C)
-    | step_response_write f :
-      conf.(Implementation.outstanding) !! π = Some f →
-      f.(op) = ReadWrite.Write →
-      f.(pc) = 2 →
-      step_tracker C π conf (Response Value.Unit) (evolve_ret π Value.Unit C)
-    | step_response_read f v :
-      conf.(Implementation.outstanding) !! π = Some f →
-      f.(op) = ReadWrite.Read →
-      f.(pc) = 1 →
-      f.(registers) !! "r" = Some v →
-      step_tracker C π conf (Response v) (evolve_ret π v C).
-
-    Inductive S :=
-      | 
-
-    Definition step_auxiliary
-      (C : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.Cell)) 
-      (π : Π)
-      (l : line Π ReadWrite.Cell) 
-      (conf : Implementation.configuration Π ReadCAS.t ReadWrite.Cell)
-      (C' : Map.dependent Aux (λ _, meta_configuration Π ReadWrite.Cell)) : Prop :=
-      step_tracker (C tt) π conf l (C' tt).
-
-    Definition inv p :=
-      Augmented.invariant 
-        (λ _, meta_configuration Π ReadWrite.Cell)
-        (λ _ : unit, PartialTracker.initial_tracker impl)
-        impl
-        step_auxiliary
-        (λ c, p c.(Augmented.base_configuration) (c.(Augmented.auxiliary_state) tt)).
-
-    Import Implementation.
-
-    Lemma inv_state : inv (λ c Δ, ∀ σ f, Δ σ f → c.(ϵ) ReadCAS.Cell = σ).
-    Proof.
-      unfold inv, Augmented.invariant, invariant. intros. induction r.
-      - simpl. simpl in *. inv H0. inv H1. reflexivity.
-      - inv H0. simpl in *. destruct l.
-        + inv H7. inv H0. inv H2. simpl. simpl in *. apply IHr. inv H6.
-
+      Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
+      Proof.
+      Admitted.
 
 End RWCAS.
 
