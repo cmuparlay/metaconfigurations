@@ -731,7 +731,7 @@ Module FullTracker.
 
   Definition run Π Ω `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := Augmented.run (Σ Π ω) Π Ω ω.
 
-  Definition configuration Π Ω `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := Augmented.configuration (Σ Π) Π Ω ω.
+  Definition configuration Π Ω `{Countable Π, Object Π Ω, Object Π Ω₀} (ω : Ω₀) := Augmented.configuration (Σ Π ω) Π Ω ω.
 
   Section Adequacy.
 
@@ -750,14 +750,14 @@ Module FullTracker.
 
   Definition Run := Augmented.Run (Σ Π ω) σ₀ impl step_auxiliary.
 
-  Definition tracker (c : Augmented.configuration Π Ω ω) := c.(Augmented.auxiliary_state) tt.
+  Definition tracker (c : configuration Π Ω ω) := c.(Augmented.auxiliary_state) tt.
   End Adequacy.
 
 End FullTracker.
 
 Module ReadWrite.
 
-  Variant t := Cell.
+  Variant t : Set := Cell.
 
   Definition Σ := Value.t.
 
@@ -842,13 +842,49 @@ Section RWCAS.
     (* Only auxiliary state is metaconfiguration *)
     Definition Aux := unit.
 
-    Check @FullTracker.configuration impl.
+    Import Augmented.
+    Import Implementation.
 
-    Variant S (c : FullTracker.configuration impl) : meta_configuration Π ω :=
-      | S_intro σ f : S c σ f.
-        
+    Variant tracker_inv (c : FullTracker.configuration Π ReadCAS.t ReadWrite.Cell) (π : Π) : status Π ReadWrite.Cell → Prop :=
+      | tracker_inv_idle : c.(base_configuration).(outstanding) !! π = None → tracker_inv c π Idle
+      | tracker_inv_read_read f : 
+        c.(base_configuration).(outstanding) !! π = Some f →
+        f.(op) = ReadWrite.Read →
+        f.(pc) = 0 →
+        tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Read Value.Unit)
+      | tracker_inv_read_return f v :
+        c.(base_configuration).(outstanding) !! π = Some f →
+        f.(op) = ReadWrite.Read →
+        f.(pc) = 1 →
+        f.(registers) !! "r" = Some v →
+        tracker_inv c π (Linearized v)
+      | tracker_inv_write_read f v :
+        c.(base_configuration).(outstanding) !! π = Some f →
+        f.(op) = ReadWrite.Write →
+        f.(pc) = 0 →
+        f.(registers) !! "y" = Some v →
+        tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Write v)
+      | tracker_inv_write_cas_pending f v :
+        c.(base_configuration).(outstanding) !! π = Some f →
+        f.(op) = ReadWrite.Write →
+        f.(pc) = 1 →
+        f.(registers) !! "y" = Some v →
+        tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Write v)
+      | tracker_inv_write_cas_linearized f v :
+        c.(base_configuration).(outstanding) !! π = Some f →
+        f.(op) = ReadWrite.Write →
+        f.(pc) = 1 →
+        f.(registers) !! "x" = Some v →
+        c.(base_configuration).(ϵ) ReadCAS.Cell ≠ v →
+        tracker_inv c π (Linearized Value.Unit)
+      | tracker_inv_write_response f :
+        c.(base_configuration).(outstanding) !! π = Some f →
+        f.(op) = ReadWrite.Write →
+        f.(pc) = 2 →
+        tracker_inv c π (Linearized Value.Unit).
 
-
+      Variant S (c : FullTracker.configuration Π ReadCAS.t ReadWrite.Cell) : meta_configuration Π ReadWrite.Cell :=
+        | S_intro f : (∀ π : Π, tracker_inv c π (f π)) → S c (c.(base_configuration).(ϵ) ReadCAS.Cell) f.
 
     Variant step_tracker
       (C : meta_configuration Π ReadWrite.Cell) 
