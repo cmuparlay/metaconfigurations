@@ -901,7 +901,11 @@ Section RWCAS.
             unfold FullTracker.initial_tracker. unfold "⊆", relation_SubsetEq, refines.
             intros. inv H0. simpl. constructor. intros.
             pose proof (H1 π). inv H0. reflexivity.
-        - admit.
+        - inv H0. inv H6. inv H1. simpl in *. inv H0.
+          + simpl in *. split.
+            * admit.
+            * unfold "⊆", relation_SubsetEq, refines. intros σ f HS.
+              inv HS.
       Admitted.
 
 End RWCAS.
