@@ -521,7 +521,7 @@ Module PartialTracker.
   Variable impl : Implementation Π Ω ω.
 
   Variant initial_tracker : meta_configuration Π ω :=
-    initial_tracker_intro : initial_tracker impl.(initial_state) (λ _, Idle).
+    initial_tracker_intro f : (∀ π, f π = Idle) → initial_tracker impl.(initial_state) f.
 
   Section Soundness.
 
@@ -893,6 +893,15 @@ Section RWCAS.
 
       Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
       Proof.
+        unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros.
+        - inv H0. simpl. split.
+          + unfold initial_configuration. eexists. eexists. econstructor. intros.
+            econstructor. auto.
+          + unfold initial_configuration, FullTracker.σ₀. simpl.
+            unfold FullTracker.initial_tracker. unfold "⊆", relation_SubsetEq, refines.
+            intros. inv H0. simpl. constructor. intros.
+            pose proof (H1 π). inv H0. reflexivity.
+        - admit.
       Admitted.
 
 End RWCAS.
