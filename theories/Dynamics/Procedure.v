@@ -19,11 +19,13 @@ Arguments body {_ _ _ _}.
 Record frame Π {Ω} `{Object Π Ω} (ω : Ω) : Type := {
   op : (type ω).(OP);
   pc : nat;
+  arg : Value.t;
   registers : stringmap Value.t;
 }.
 
 Arguments op {_ _ _ _ _}.
 Arguments pc {_ _ _ _ _}.
+Arguments arg {_ _ _ _ _}.
 Arguments registers {_ _ _ _ _}.
 
 Variant signal Π {Ω} `{Object Π Ω} ω :=
@@ -377,30 +379,31 @@ Module Implementation.
       {|
         op := op;
         pc := 0;
-        registers := singletonM proc.(param) arg;
+        arg := arg;
+        registers := ∅;
       |}.
 
   Definition proc op := body (procedures impl op).
 
   Variant step_procedure (π : Π) : states Π Ω → frame Π ω → states Π Ω → signal Π ω → Prop :=
-    | step_continue pc s ψ ψ' (op : (type ω).(OP)) ϵ ϵ' :
+    | step_continue pc arg s ψ ψ' (op : (type ω).(OP)) ϵ ϵ' :
       (* If [pc] points to line containing statement [s] in [proc] *)
       proc op !! pc = Some s →
-      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Continue ⟩ →
-      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ' (Next {| pc := S pc; registers := ψ'; op := op |})
-    | step_goto pc pc' s ψ ψ' op ϵ ϵ' :
+      ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Continue ⟩ →
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ' (Next {| pc := S pc; registers := ψ'; op := op; arg := arg |})
+    | step_goto pc pc' arg s ψ ψ' op ϵ ϵ' :
       (* If [pc] points to line containing statement [s] in [proc] *)
       proc op !! pc = Some s →
-      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
-      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ' (Next {| pc := pc'; registers := ψ'; op := op |})
-    | step_implicit_return pc ψ op ϵ :
+      ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ' (Next {| pc := pc'; registers := ψ'; op := op; arg := arg |})
+    | step_implicit_return arg pc ψ op ϵ :
       (* Control has fallen off end of procedure *)
       proc op !! pc = None →
-      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ (Return ⊤ᵥ)
-    | step_return pc s ψ op ϵ ϵ' v:
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ (Return ⊤ᵥ)
+    | step_return arg pc s ψ op ϵ ϵ' v:
       proc op !! pc = Some s →
-      ⟨ π , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
-      step_procedure π ϵ {| pc := pc; registers := ψ; op := op |} ϵ' (Return v).
+      ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ' (Return v).
 
     Variant step : gmap Π (frame Π ω) → states Π Ω → Π → line Π ω → gmap Π (frame Π ω) → states Π Ω → Prop :=
       | step_invoke outstanding π ϵ op arg :
@@ -769,7 +772,7 @@ Module ReadWrite.
   Variant OP := Read | Write.
 
   Variant δ (Π : Type) : Σ → Π → OP → Value.t → Σ → Value.t → Prop :=
-    | δ_read x π : δ Π x π Read Value.Unit x x
+    | δ_read x π v : δ Π x π Read v x x
     | δ_write x y π : δ Π x π Write y y Value.Unit.
 
   Definition object_type Π := {|
@@ -794,7 +797,7 @@ Module ReadCAS.
   Variant OP := Read | CAS.
 
   Variant δ (Π : Type) : Σ → Π → OP → Value.t → Σ → Value.t → Prop :=
-    | δ_read x π : δ Π x π Read Value.Unit x x
+    | δ_read x π v : δ Π x π Read v x x
     | δ_cas_succeed x y z π : 
       x = y →
         δ Π x π CAS (Value.Pair y z) z (Value.Bool true)
@@ -852,23 +855,16 @@ Section RWCAS.
 
     Variant tracker_inv (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) (π : Π) : status Π ReadWrite.Cell → Prop :=
       | tracker_inv_idle : c.(outstanding) !! π = None → tracker_inv c π Idle
-      | tracker_inv_read_read f : 
+      | tracker_inv_invoke f v : 
         c.(outstanding) !! π = Some f →
-        f.(op) = ReadWrite.Read →
         f.(pc) = 0 →
-        tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Read Value.Unit)
+        tracker_inv c π (Pending f.(op) v)
       | tracker_inv_read_return f v :
         c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Read →
         f.(pc) = 1 →
         f.(registers) !! "r" = Some v →
         tracker_inv c π (Linearized v)
-      | tracker_inv_write_read f v :
-        c.(outstanding) !! π = Some f →
-        f.(op) = ReadWrite.Write →
-        f.(pc) = 0 →
-        f.(registers) !! "y" = Some v →
-        tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Write v)
       | tracker_inv_write_cas_pending f v :
         c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Write →
@@ -891,6 +887,8 @@ Section RWCAS.
       Variant S (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) : meta_configuration Π ReadWrite.Cell :=
         | S_intro f : (∀ π : Π, tracker_inv c π (f π)) → S c (c.(ϵ) ReadCAS.Cell) f.
 
+      Require Import Coq.Logic.FunctionalExtensionality.
+
       Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
       Proof.
         unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros.
@@ -905,7 +903,22 @@ Section RWCAS.
           + simpl in *. split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ f HS.
-              inv HS.
+              inv HS. pose proof H0 π. inv H2;
+              try (erewrite <- H1 in H5; rewrite lookup_insert in H5; inv H5).
+              rewrite <- H7. simpl.
+              eapply linearize_pending_intro with (πs := ⟨⟩) (f := f).
+              assert (f = invoke (Map.rebind π Idle f) π op0 arg).
+              { extensionality π'. unfold invoke, Map.rebind. destruct (decide (π = π')).
+                - destruct e. simpl in *. symmetry. assumption.  }
+              -- simpl in *. clear H6. rewrite 
+              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5. discriminate.
+              -- admit.
+              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
+              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
+              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
+              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
+              eapply linearize_pending_intro with (πs := ⟨⟩) (f := f).
+              -- econstructor.
       Admitted.
 
 End RWCAS.
@@ -1373,8 +1386,8 @@ Section LiftL.
 
   Lemma lift_term_l_complete :
     ∀ e π ψ (ϵ₁ ϵ₁' : states Π Ω) v (ϵ₂ : states Π Ω'),
-      ⟨ π , ψ , ϵ₁ , e ⟩ ⇓ₑ ⟨ ϵ₁' , v ⟩ →
-        ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_l e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁' ϵ₂ , v ⟩.
+      ⟨ π , arg , ψ , ϵ₁ , e ⟩ ⇓ₑ ⟨ ϵ₁' , v ⟩ →
+        ⟨ π , arg , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_l e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁' ϵ₂ , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
     rewrite rebind_union_distr_l. econstructor.
@@ -1384,8 +1397,8 @@ Section LiftL.
 
   Lemma lift_term_l_sound_l :
     ∀ e π ψ ϵ v ϵ',
-      ⟨ π , ψ , ϵ , lift_term_l e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
-        ⟨ π , ψ , πₗ ϵ , e ⟩ ⇓ₑ ⟨ πₗ ϵ' , v ⟩.
+      ⟨ π , arg , ψ , ϵ , lift_term_l e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
+        ⟨ π , arg , ψ , πₗ ϵ , e ⟩ ⇓ₑ ⟨ πₗ ϵ' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
     rewrite πₗ_rebind_comm. econstructor.
@@ -1398,7 +1411,7 @@ Section LiftL.
 
   Lemma lift_term_l_sound_r :
     ∀ e π ψ ϵ v ϵ',
-      ⟨ π , ψ , ϵ , lift_term_l e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ → πᵣ ϵ = πᵣ ϵ'.
+      ⟨ π , arg , ψ , ϵ , lift_term_l e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ → πᵣ ϵ = πᵣ ϵ'.
   Proof.
     induction e; intros; simpl in *; inv H1; intuition.
     - apply IHe in H7. subst. simpl in *.
@@ -1423,9 +1436,9 @@ Section LiftL.
 
   Lemma lift_stmt_l_complete :
     ∀ s π ψ ψ' (ϵ₁ ϵ₁' : states Π Ω) sig,
-      ⟨ π , ψ , ϵ₁ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ₁' , sig ⟩ →
+      ⟨ π , arg , ψ , ϵ₁ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ₁' , sig ⟩ →
         ∀ ϵ₂,
-          ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , disjoint_union ϵ₁' ϵ₂ , sig ⟩.
+          ⟨ π , arg , ψ , disjoint_union ϵ₁ ϵ₂ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , disjoint_union ϵ₁' ϵ₂ , sig ⟩.
   Proof.
     intros. generalize dependent ϵ₂. induction H1; intros.
     - econstructor.
@@ -1444,8 +1457,8 @@ Section LiftL.
 
   Lemma lift_stmt_l_sound_l :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      ⟨ π , ψ , ϵ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ →
-        ⟨ π , ψ , πₗ ϵ , s ⟩ ⇓ₛ ⟨ ψ' , πₗ ϵ' , sig ⟩.
+      ⟨ π , arg , ψ , ϵ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ →
+        ⟨ π , arg , ψ , πₗ ϵ , s ⟩ ⇓ₛ ⟨ ψ' , πₗ ϵ' , sig ⟩.
   Proof.
     induction s; intros.
     - inv H1; econstructor; eauto.
@@ -1465,7 +1478,7 @@ Section LiftL.
 
   Lemma lift_stmt_l_sound_r :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      ⟨ π , ψ , ϵ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ → πᵣ ϵ = πᵣ ϵ'.
+      ⟨ π , arg , ψ , ϵ , lift_stmt_l s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ → πᵣ ϵ = πᵣ ϵ'.
   Proof.
     induction s; intros.
     - inv H1.
@@ -1519,8 +1532,8 @@ Section LiftR.
 
   Lemma lift_term_r_complete :
     ∀ e π ψ (ϵ₂ ϵ₂' : states Π Ω') v (ϵ₁ : states Π Ω),
-      ⟨ π , ψ , ϵ₂ , e ⟩ ⇓ₑ ⟨ ϵ₂' , v ⟩ →
-        ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_r e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁ ϵ₂' , v ⟩.
+      ⟨ π , arg , ψ , ϵ₂ , e ⟩ ⇓ₑ ⟨ ϵ₂' , v ⟩ →
+        ⟨ π , arg , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_r e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁ ϵ₂' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
     rewrite rebind_union_distr_r. econstructor.
@@ -1530,8 +1543,8 @@ Section LiftR.
 
   Lemma lift_term_r_sound_r :
     ∀ e π ψ ϵ v ϵ',
-      ⟨ π , ψ , ϵ , lift_term_r e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
-        ⟨ π , ψ , πᵣ ϵ , e ⟩ ⇓ₑ ⟨ πᵣ ϵ' , v ⟩.
+      ⟨ π , arg , ψ , ϵ , lift_term_r e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
+        ⟨ π , arg , ψ , πᵣ ϵ , e ⟩ ⇓ₑ ⟨ πᵣ ϵ' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
     rewrite πᵣ_rebind_comm. econstructor.
@@ -1544,7 +1557,7 @@ Section LiftR.
 
   Lemma lift_term_r_sound_l :
     ∀ e π ψ ϵ v ϵ',
-      ⟨ π , ψ , ϵ , lift_term_r e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ → πₗ ϵ = πₗ ϵ'.
+      ⟨ π , arg , ψ , ϵ , lift_term_r e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ → πₗ ϵ = πₗ ϵ'.
   Proof.
     induction e; intros; simpl in *; inv H1; intuition.
     - apply IHe in H7. simpl in *.
@@ -1573,9 +1586,9 @@ Section LiftR.
 
   Lemma lift_stmt_r_complete :
     ∀ s π ψ ψ' (ϵ₂ ϵ₂' : states Π Ω') sig,
-      ⟨ π , ψ , ϵ₂ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ₂' , sig ⟩ →
+      ⟨ π , arg , ψ , ϵ₂ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ₂' , sig ⟩ →
         ∀ ϵ₁,
-          ⟨ π , ψ , disjoint_union ϵ₁ ϵ₂ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , disjoint_union ϵ₁ ϵ₂' , sig ⟩.
+          ⟨ π , arg , ψ , disjoint_union ϵ₁ ϵ₂ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , disjoint_union ϵ₁ ϵ₂' , sig ⟩.
   Proof.
     intros. generalize dependent ϵ₁. induction H1; intros.
     - econstructor.
@@ -1594,8 +1607,8 @@ Section LiftR.
 
   Lemma lift_stmt_r_sound_r :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      ⟨ π , ψ , ϵ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ →
-        ⟨ π , ψ , πᵣ ϵ , s ⟩ ⇓ₛ ⟨ ψ' , πᵣ ϵ' , sig ⟩.
+      ⟨ π , arg , ψ , ϵ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ →
+        ⟨ π , arg , ψ , πᵣ ϵ , s ⟩ ⇓ₛ ⟨ ψ' , πᵣ ϵ' , sig ⟩.
   Proof.
     induction s; intros.
     - inv H1; econstructor; eauto.
@@ -1615,7 +1628,7 @@ Section LiftR.
 
   Lemma lift_stmt_r_sound_l :
     ∀ s π ψ ϵ sig ψ' ϵ',
-      ⟨ π , ψ , ϵ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ → πₗ ϵ = πₗ ϵ'.
+      ⟨ π , arg , ψ , ϵ , lift_stmt_r s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩ → πₗ ϵ = πₗ ϵ'.
   Proof.
     induction s; intros.
     - inv H1.

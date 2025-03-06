@@ -22,6 +22,7 @@ Section Term.
 
   Inductive t : Type :=
     | Var (x : string)
+    | Arg
     | Invoke (ω : Ω) (op : (type ω).(OP)) (arg : t)
     | Bop (op : bop) (e₁ : t) (e₂ : t)
     | Uop (op : uop) (e : t)
@@ -37,6 +38,7 @@ Section Term.
 End Term.
 
 Arguments Var {Π Ω _ _}.
+Arguments Arg {Π Ω _ _}.
 Arguments Invoke {Π Ω _ _}.
 Arguments Bop {Π Ω _ _}.
 Arguments Uop {Π Ω _ _}.
@@ -62,6 +64,7 @@ Inductive free {Π Ω : Type} `{Object Π Ω} : string → t Π Ω → Prop :=
 Fixpoint subst {Π Ω} `{Object Π Ω} (eₓ : t Π Ω) (x : string) (e : t Π Ω) := 
   match e with
   | Var x => eₓ
+  | Arg => Arg
   | Invoke ω op arg => Invoke ω op (subst eₓ x arg)
   | Bop op e₁ e₂ => Bop op (subst eₓ x e₁) (subst eₓ x e₂)
   | Uop op e => Uop op (subst eₓ x e)

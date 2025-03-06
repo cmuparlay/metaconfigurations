@@ -11,6 +11,8 @@ Proof.
   - exact (m k').
 Defined.
 
+Notation "m { k ↦ v }" := (rebind k v m) (at level 80).
+
 Definition lookup {K : Type} {V : K → Type} `{EqDecision K} (k : K) (m : dependent K V) : V k := m k.
 
 Theorem lookup_rebind_same {K : Type} {V : K → Type} `{EqDecision K} (k : K) (v : V k) (m : dependent K V) : 

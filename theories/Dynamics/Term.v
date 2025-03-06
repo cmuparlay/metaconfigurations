@@ -32,39 +32,41 @@ Variant eval_inv {Π Ω} `{Object Π Ω} π ϵ ω op arg σ res :=
     (type ω).(δ) (Map.lookup ω ϵ) π op arg σ res →
     eval_inv π ϵ ω op arg σ res.
 
-Reserved Notation "⟨ π , Ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" (at level 80, no associativity).
+Reserved Notation "⟨ π , arg , Ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" (at level 80, no associativity).
 
-Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (ψ : stringmap Value.t) (ϵ : states Π Ω) : Term.t Π Ω → states Π Ω → Value.t → Prop := 
+Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (arg : Value.t) (ψ : stringmap Value.t) (ϵ : states Π Ω) : Term.t Π Ω → states Π Ω → Value.t → Prop := 
   | eval_var x v :
     ψ !! x = Some v →
-    ⟨ π , ψ , ϵ , Var x ⟩ ⇓ₑ ⟨ ϵ , v ⟩
-  | eval_invoke ω op arg argᵥ res ϵ' σ :
-    ⟨ π , ψ , ϵ , arg ⟩ ⇓ₑ ⟨ ϵ' , argᵥ ⟩ →
-    eval_inv π ϵ ω op argᵥ σ res →
-    ⟨ π , ψ , ϵ , Invoke ω op arg ⟩ ⇓ₑ ⟨ rebind ω σ ϵ' , res ⟩
+    ⟨ π , arg , ψ , ϵ , Var x ⟩ ⇓ₑ ⟨ ϵ , v ⟩
+  | eval_arg :
+    ⟨ π , arg , ψ , ϵ , Arg ⟩ ⇓ₑ ⟨ ϵ , arg ⟩
+  | eval_invoke ω op e v res ϵ' σ :
+    ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
+    eval_inv π ϵ ω op v σ res →
+    ⟨ π , arg , ψ , ϵ , Invoke ω op e ⟩ ⇓ₑ ⟨ rebind ω σ ϵ' , res ⟩
   | eval_bop bop e₁ e₂ v₁ v₂ v ϵ₁ ϵ₂ : 
-    ⟨ π , ψ , ϵ , e₁ ⟩ ⇓ₑ ⟨ ϵ₁ , v₁ ⟩ →
-    ⟨ π , ψ , ϵ₁ , e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , v₂ ⟩ →
+    ⟨ π , arg , ψ , ϵ , e₁ ⟩ ⇓ₑ ⟨ ϵ₁ , v₁ ⟩ →
+    ⟨ π , arg , ψ , ϵ₁ , e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , v₂ ⟩ →
     eval_binop bop v₁ v₂ v →
-    ⟨ π , ψ , ϵ , Bop bop e₁ e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , v ⟩
+    ⟨ π , arg , ψ , ϵ , Bop bop e₁ e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , v ⟩
   | eval_uop e uop ϵ' v v' :
-    ⟨ π , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
+    ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
     eval_unop uop v v' → 
-    ⟨ π , ψ , ϵ , Uop uop e ⟩ ⇓ₑ ⟨ ϵ' , v' ⟩
+    ⟨ π , arg , ψ , ϵ , Uop uop e ⟩ ⇓ₑ ⟨ ϵ' , v' ⟩
   | eval_pair e₁ e₂ v₁ v₂ ϵ₁ ϵ₂ :
-    ⟨ π , ψ , ϵ , e₁ ⟩ ⇓ₑ ⟨ ϵ₁ , v₁ ⟩ →
-    ⟨ π , ψ , ϵ₁ , e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , v₂ ⟩ →
-    ⟨ π , ψ , ϵ , Term.Pair e₁ e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , Pair v₁ v₂ ⟩
+    ⟨ π , arg , ψ , ϵ , e₁ ⟩ ⇓ₑ ⟨ ϵ₁ , v₁ ⟩ →
+    ⟨ π , arg , ψ , ϵ₁ , e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , v₂ ⟩ →
+    ⟨ π , arg , ψ , ϵ , Term.Pair e₁ e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , Pair v₁ v₂ ⟩
   | eval_projl e v₁ v₂ ϵ' :
-    ⟨ π , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , Pair v₁ v₂ ⟩ →
-    ⟨ π , ψ , ϵ , ProjL e ⟩ ⇓ₑ ⟨ ϵ' , v₁ ⟩
+    ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , Pair v₁ v₂ ⟩ →
+    ⟨ π , arg , ψ , ϵ , ProjL e ⟩ ⇓ₑ ⟨ ϵ' , v₁ ⟩
   | eval_projr e v₁ v₂ ϵ' :
-    ⟨ π , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , Pair v₁ v₂ ⟩ →
-    ⟨ π , ψ , ϵ , ProjR e ⟩ ⇓ₑ ⟨ ϵ' , v₂ ⟩
+    ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , Pair v₁ v₂ ⟩ →
+    ⟨ π , arg , ψ , ϵ , ProjR e ⟩ ⇓ₑ ⟨ ϵ' , v₂ ⟩
   | eval_int n :
-    ⟨ π , ψ , ϵ , Term.Int n ⟩ ⇓ₑ ⟨ ϵ , n ⟩
+    ⟨ π , arg , ψ , ϵ , Term.Int n ⟩ ⇓ₑ ⟨ ϵ , n ⟩
   | eval_bool b :
-    ⟨ π , ψ , ϵ , Term.Bool b ⟩ ⇓ₑ ⟨ ϵ , b ⟩
+    ⟨ π , arg , ψ , ϵ , Term.Bool b ⟩ ⇓ₑ ⟨ ϵ , b ⟩
   | eval_unit :
-    ⟨ π , ψ , ϵ , ⊤ₑ ⟩ ⇓ₑ ⟨ ϵ , ⊤ᵥ ⟩
-where "⟨ π , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" := (eval π ψ ϵ e ϵ' v) : dynamics_scope.
+    ⟨ π , arg , ψ , ϵ , ⊤ₑ ⟩ ⇓ₑ ⟨ ϵ , ⊤ᵥ ⟩
+where "⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" := (eval π arg ψ ϵ e ϵ' v) : dynamics_scope.
