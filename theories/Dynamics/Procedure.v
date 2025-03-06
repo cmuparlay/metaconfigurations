@@ -855,10 +855,10 @@ Section RWCAS.
 
     Variant tracker_inv (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) (π : Π) : status Π ReadWrite.Cell → Prop :=
       | tracker_inv_idle : c.(outstanding) !! π = None → tracker_inv c π Idle
-      | tracker_inv_invoke f v : 
+      | tracker_inv_invoke f : 
         c.(outstanding) !! π = Some f →
         f.(pc) = 0 →
-        tracker_inv c π (Pending f.(op) v)
+        tracker_inv c π (Pending f.(op) f.(arg))
       | tracker_inv_read_return f v :
         c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Read →
@@ -884,8 +884,25 @@ Section RWCAS.
         f.(pc) = 2 →
         tracker_inv c π (Linearized Value.Unit).
 
+      Lemma tracker_inv_step_diff π c c' status :
+        c.(outstanding) !! π = c'.(outstanding) !! π →
+        c.(ϵ) ReadCAS.Cell = c'.(ϵ) ReadCAS.Cell →
+        tracker_inv c π status → tracker_inv c' π status.
+      Proof.
+        intros Hlocal Hglobal Hrel. inv Hrel.
+        - constructor. now rewrite <- Hlocal.
+        - constructor; auto. now rewrite <- Hlocal.
+        - econstructor; eauto. now rewrite <- Hlocal.
+        - econstructor; eauto. now rewrite <- Hlocal.
+        - eapply tracker_inv_write_cas_linearized; eauto.
+          + now rewrite <- Hlocal.
+          + now rewrite <- Hglobal.
+        - eapply tracker_inv_write_response; eauto.
+          now rewrite <- Hlocal.
+      Qed.
+
       Variant S (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) : meta_configuration Π ReadWrite.Cell :=
-        | S_intro f : (∀ π : Π, tracker_inv c π (f π)) → S c (c.(ϵ) ReadCAS.Cell) f.
+        | S_intro f : (∀ π : Π, tracker_inv c π (Map.lookup π f)) → S c (c.(ϵ) ReadCAS.Cell) f.
 
       Require Import Coq.Logic.FunctionalExtensionality.
 
@@ -898,18 +915,33 @@ Section RWCAS.
           + unfold initial_configuration, FullTracker.σ₀. simpl.
             unfold FullTracker.initial_tracker. unfold "⊆", relation_SubsetEq, refines.
             intros. inv H0. simpl. constructor. intros.
-            pose proof (H1 π). inv H0. reflexivity.
+            pose proof (H1 π). inv H0. now unfold Map.lookup in *.
         - inv H0. inv H6. inv H1. simpl in *. inv H0.
           + simpl in *. split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ f HS.
               inv HS. pose proof H0 π. inv H2;
               try (erewrite <- H1 in H5; rewrite lookup_insert in H5; inv H5).
+              simpl in *. clear H6.
               rewrite <- H7. simpl.
-              eapply linearize_pending_intro with (πs := ⟨⟩) (f := f).
-              assert (f = invoke (Map.rebind π Idle f) π op0 arg).
+              assert (f = invoke (Map.rebind π Idle f) π op0 arg0).
               { extensionality π'. unfold invoke, Map.rebind. destruct (decide (π = π')).
-                - destruct e. simpl in *. symmetry. assumption.  }
+                - destruct e. simpl in *. symmetry. assumption.
+                - reflexivity. }
+              eapply linearize_pending_intro with (πs := ⟨⟩) (f := f) (σ := ϵ base Cell).
+              -- rewrite H2. econstructor.
+                ++ apply IHr.
+                  ** auto.
+                  ** rewrite <- H7. econstructor. intros.
+                     destruct (decide (π = π0)).
+                     --- subst. rewrite Map.lookup_rebind_same. now constructor.
+                     --- rewrite Map.lookup_rebind_diff; auto. apply tracker_inv_step_diff with (c := base).
+                      +++ rewrite <- H1. now rewrite lookup_insert_ne.
+                      +++ now rewrite H7.
+                      +++ easy.
+                ++ auto.
+
+              
               -- simpl in *. clear H6. rewrite 
               -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5. discriminate.
               -- admit.

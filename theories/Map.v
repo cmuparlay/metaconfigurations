@@ -16,7 +16,7 @@ Notation "m { k ↦ v }" := (rebind k v m) (at level 80).
 Definition lookup {K : Type} {V : K → Type} `{EqDecision K} (k : K) (m : dependent K V) : V k := m k.
 
 Theorem lookup_rebind_same {K : Type} {V : K → Type} `{EqDecision K} (k : K) (v : V k) (m : dependent K V) : 
-  lookup k (rebind k v m) = v.
+  rebind k v m k = v.
 Proof.
   destruct (decide (k = k)); cbv; 
   destruct (EqDecision0 k k); intuition.
@@ -24,7 +24,7 @@ Proof.
 Qed.
 
 Theorem lookup_rebind_diff {K : Type} {V : K → Type} `{EqDecision K} (k k' : K) (v : V k) (m : dependent K V) 
-  : k ≠ k' → lookup k' (rebind k v m) = lookup k' m.
+  : k ≠ k' → rebind k v m k' = lookup k' m.
 Proof.
   intros. unfold lookup, rebind. now destruct (decide (k = k')).
 Qed.
