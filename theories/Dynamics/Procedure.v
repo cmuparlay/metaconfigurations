@@ -8,14 +8,6 @@ From Metaconfigurations Require Import
 From Metaconfigurations.Dynamics Require Import Term Stmt.
 From stdpp Require Import base decidable list stringmap gmap fin_maps.
 
-Record procedure (Π Ω : Type) `{Object Π Ω} : Type := {
-  param : string;
-  body : list (Stmt.t Π Ω);
-}.
-
-Arguments param {_ _ _ _}.
-Arguments body {_ _ _ _}.
-
 Record frame Π {Ω} `{Object Π Ω} (ω : Ω) : Type := {
   op : (type ω).(OP);
   pc : nat;
@@ -40,7 +32,7 @@ Record Implementation (Π Ω : Type) {Ω₀} `{Object Π Ω₀, Object Π Ω} (�
   (* Initial states for every base object *)
   initial_states : states Π Ω;
   (* Assignment from every process π and operation OP to a procedure *)
-  procedures : (type ω).(OP) → procedure Π Ω;
+  procedures : (type ω).(OP) → list (Stmt.t Π Ω);
 }.
 
 Arguments initial_state : default implicits.
@@ -54,8 +46,7 @@ Proof.
   split.
   - exact ϵ₀.
   - unfold states, dependent. intros. destruct k. simpl. exact ϵ₀.
-  - intros op. split.
-    + (* param *) exact "arg".
+  - intros op. 
     + (* body *) exact
       [
         Assign "r" (Term.Invoke (Sing ω) op (Var "arg"));
@@ -383,25 +374,23 @@ Module Implementation.
         registers := ∅;
       |}.
 
-  Definition proc op := body (procedures impl op).
-
   Variant step_procedure (π : Π) : states Π Ω → frame Π ω → states Π Ω → signal Π ω → Prop :=
     | step_continue pc arg s ψ ψ' (op : (type ω).(OP)) ϵ ϵ' :
       (* If [pc] points to line containing statement [s] in [proc] *)
-      proc op !! pc = Some s →
+      procedures impl op !! pc = Some s →
       ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Continue ⟩ →
       step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ' (Next {| pc := S pc; registers := ψ'; op := op; arg := arg |})
     | step_goto pc pc' arg s ψ ψ' op ϵ ϵ' :
       (* If [pc] points to line containing statement [s] in [proc] *)
-      proc op !! pc = Some s →
+      procedures impl op !! pc = Some s →
       ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
       step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ' (Next {| pc := pc'; registers := ψ'; op := op; arg := arg |})
     | step_implicit_return arg pc ψ op ϵ :
       (* Control has fallen off end of procedure *)
-      proc op !! pc = None →
+      procedures impl op !! pc = None →
       step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ (Return ⊤ᵥ)
     | step_return arg pc s ψ op ϵ ϵ' v:
-      proc op !! pc = Some s →
+      procedures impl op !! pc = Some s →
       ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
       step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ' (Return v).
 
@@ -832,19 +821,15 @@ Section RWCAS.
     - exact Value.Unit.
     - exact (λ _, Value.Unit).
     - intros op. destruct op eqn:?.
-      + split.
-        * exact "_".
-        * exact [
-            Assign "r" (Term.Invoke ReadCAS.Cell ReadCAS.Read Term.Unit);
-            Syntax.Stmt.Return (Term.Var "r")
-          ].
-      + split.
-        * exact "y".
-        * exact [
-            Assign "x" (Term.Invoke ReadCAS.Cell ReadCAS.Read Term.Unit);
-            Stmt.Invoke (Term.Invocation ReadCAS.Cell ReadCAS.CAS (Term.Pair (Term.Var "x") (Term.Var "y")));
-            Syntax.Stmt.Return Term.Unit
-          ].
+      exact [
+        Assign "r" (Term.Invoke ReadCAS.Cell ReadCAS.Read Term.Unit);
+        Syntax.Stmt.Return (Term.Var "r")
+      ].
+      + exact [
+          Assign "x" (Term.Invoke ReadCAS.Cell ReadCAS.Read Term.Unit);
+          Stmt.Invoke (Term.Invocation ReadCAS.Cell ReadCAS.CAS (Term.Pair (Term.Var "x") Term.Arg));
+          Syntax.Stmt.Return Term.Unit
+        ].
     Defined.
 
     (* Only auxiliary state is metaconfiguration *)
@@ -865,12 +850,11 @@ Section RWCAS.
         f.(pc) = 1 →
         f.(registers) !! "r" = Some v →
         tracker_inv c π (Linearized v)
-      | tracker_inv_write_cas_pending f v :
+      | tracker_inv_write_cas_pending f :
         c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Write →
         f.(pc) = 1 →
-        f.(registers) !! "y" = Some v →
-        tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Write v)
+        tracker_inv c π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Write f.(arg))
       | tracker_inv_write_cas_linearized f v :
         c.(outstanding) !! π = Some f →
         f.(op) = ReadWrite.Write →
@@ -902,9 +886,49 @@ Section RWCAS.
       Qed.
 
       Variant S (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) : meta_configuration Π ReadWrite.Cell :=
-        | S_intro f : (∀ π : Π, tracker_inv c π (Map.lookup π f)) → S c (c.(ϵ) ReadCAS.Cell) f.
+        | S_intro f : (∀ π : Π, tracker_inv c π (f π)) → S c (c.(ϵ) ReadCAS.Cell) f.
 
       Require Import Coq.Logic.FunctionalExtensionality.
+
+      Lemma intermediate_pc_positive (r : FullTracker.run Π ReadCAS.t ReadWrite.Cell) (π : Π) (l : line Π ReadWrite.Cell) c f :
+        FullTracker.Run impl (Step r π Intermediate c) →
+        c.(base_configuration).(outstanding) !! π = Some f →
+        f.(pc) ≠ 0.
+      Proof.
+        intros Hrun Hf.
+        unfold "≠". intros.
+        inv Hrun. clear H3. inv H6. simpl in *. inv H1.
+        inv H8; simpl in *.
+        - destruct op0.
+          + destruct pc0.
+            * simpl in H5. inv H5. inv H10. rewrite <- H3 in Hf.
+              rewrite lookup_insert in Hf. inv Hf.
+            * destruct pc0. 
+              -- simpl in H5. inv H5. inv H10.
+              -- simpl in H5. inv H5.
+          + destruct pc0.
+            * simpl in H5. inv H5. inv H10. rewrite <- H3 in Hf.
+              rewrite lookup_insert in Hf. inv Hf.
+            * destruct pc0. 
+              -- simpl in H5. inv H5. inv H10. rewrite <- H3 in Hf.
+                rewrite lookup_insert in Hf. inv Hf.
+              -- destruct pc0.
+                ++ simpl in H5. inv H5. inv H10.
+                ++ simpl in H5. inv H5.
+        - destruct op0.
+          + destruct pc0.
+            * simpl in H5. inv H5. inv H10.
+            * destruct pc0. 
+              -- simpl in H5. inv H5. inv H10.
+              -- simpl in H5. inv H5.
+          + destruct pc0.
+            * simpl in H5. inv H5. inv H10.
+            * destruct pc0. 
+              -- simpl in H5. inv H5. inv H10.
+              -- destruct pc0.
+                ++ simpl in H5. inv H5. inv H10.
+                ++ simpl in H5. inv H5.
+      Qed.
 
       Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
       Proof.
@@ -939,18 +963,14 @@ Section RWCAS.
                       +++ rewrite <- H1. now rewrite lookup_insert_ne.
                       +++ now rewrite H7.
                       +++ easy.
-                ++ auto.
-
-              
-              -- simpl in *. clear H6. rewrite 
-              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5. discriminate.
-              -- admit.
-              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
-              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
-              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
-              -- erewrite <- H1 in H5. rewrite lookup_insert in H5. inv H5.
-              eapply linearize_pending_intro with (πs := ⟨⟩) (f := f).
-              -- econstructor.
+                ++ now rewrite Map.lookup_rebind_same.
+              -- rewrite H7. constructor.
+          + split.
+            * admit.
+            * unfold "⊆", relation_SubsetEq, refines. intros σ g HS. inv HS.
+            pose proof H0 π. inv H4.
+            -- rewrite <- H1 in H6. now rewrite lookup_insert in H6.
+            -- simpl.
       Admitted.
 
 End RWCAS.
