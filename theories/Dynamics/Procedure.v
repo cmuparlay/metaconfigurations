@@ -890,7 +890,7 @@ Section RWCAS.
 
       Require Import Coq.Logic.FunctionalExtensionality.
 
-      Lemma intermediate_pc_positive (r : FullTracker.run Π ReadCAS.t ReadWrite.Cell) (π : Π) (l : line Π ReadWrite.Cell) c f :
+      Lemma intermediate_pc_positive (r : FullTracker.run Π ReadCAS.t ReadWrite.Cell) (π : Π) c f :
         FullTracker.Run impl (Step r π Intermediate c) →
         c.(base_configuration).(outstanding) !! π = Some f →
         f.(pc) ≠ 0.
@@ -940,37 +940,42 @@ Section RWCAS.
             unfold FullTracker.initial_tracker. unfold "⊆", relation_SubsetEq, refines.
             intros. inv H0. simpl. constructor. intros.
             pose proof (H1 π). inv H0. now unfold Map.lookup in *.
-        - inv H0. inv H6. inv H1. simpl in *. inv H0.
+        - inversion H0. subst. inv H6. inv H2. simpl in *. inv H1.
           + simpl in *. split.
             * admit.
-            * unfold "⊆", relation_SubsetEq, refines. intros σ f HS.
-              inv HS. pose proof H0 π. inv H2;
-              try (erewrite <- H1 in H5; rewrite lookup_insert in H5; inv H5).
-              simpl in *. clear H6.
-              rewrite <- H7. simpl.
-              assert (f = invoke (Map.rebind π Idle f) π op0 arg0).
+            * unfold "⊆", relation_SubsetEq, refines. intros σ g HS.
+              inv HS. pose proof H1 π. inv H4;
+              try (erewrite <- H2 in H6; rewrite lookup_insert in H6; inv H6).
+              clear H7. simpl in *. rewrite <- H8.
+              assert (g = invoke (Map.rebind π Idle g) π op0 arg0).
               { extensionality π'. unfold invoke, Map.rebind. destruct (decide (π = π')).
                 - destruct e. simpl in *. symmetry. assumption.
                 - reflexivity. }
-              eapply linearize_pending_intro with (πs := ⟨⟩) (f := f) (σ := ϵ base Cell).
-              -- rewrite H2. econstructor.
+              eapply linearize_pending_intro with (πs := ⟨⟩) (f := g) (σ := ϵ base Cell).
+              -- rewrite H4. econstructor.
                 ++ apply IHr.
                   ** auto.
-                  ** rewrite <- H7. econstructor. intros.
+                  ** rewrite <- H8. econstructor. intros.
                      destruct (decide (π = π0)).
                      --- subst. rewrite Map.lookup_rebind_same. now constructor.
                      --- rewrite Map.lookup_rebind_diff; auto. apply tracker_inv_step_diff with (c := base).
-                      +++ rewrite <- H1. now rewrite lookup_insert_ne.
-                      +++ now rewrite H7.
+                      +++ rewrite <- H2. now rewrite lookup_insert_ne.
+                      +++ now rewrite H8.
                       +++ easy.
                 ++ now rewrite Map.lookup_rebind_same.
-              -- rewrite H7. constructor.
+              -- rewrite H8. constructor.
           + split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ g HS. inv HS.
-            pose proof H0 π. inv H4.
-            -- rewrite <- H1 in H6. now rewrite lookup_insert in H6.
-            -- simpl.
+            pose proof H1 π. inv H5.
+            -- rewrite <- H2 in H7. now rewrite lookup_insert in H7.
+            -- simpl. rewrite <- H2 in H7. rewrite lookup_insert in H7. inv H7.
+               apply intermediate_pc_positive with (f := f0) in H0.
+               ++ contradiction.
+               ++ 
+
+               econstructor.
+               
       Admitted.
 
 End RWCAS.
