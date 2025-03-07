@@ -930,23 +930,39 @@ Section RWCAS.
                 ++ simpl in H5. inv H5.
       Qed.
 
+      Lemma return_pc_read {π arg ψ ψ' ϵ ϵ' pc s v} : 
+        procedures impl ReadWrite.Read !! pc = Some s →
+            ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Stmt.Return v ⟩ → pc = 1.
+      Proof.
+        cbn. intros Hstmt Hstep.
+        - destruct pc.
+          + inv Hstmt. inv Hstep.
+          + destruct pc0.
+            * reflexivity.
+            * inv Hstmt. 
+      Qed.
+
+      Lemma return_pc_write {π arg ψ ψ' ϵ ϵ' pc s v} : 
+        procedures impl ReadWrite.Write !! pc = Some s →
+            ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Stmt.Return v ⟩ → pc = 2.
+      Proof.
+        cbn. intros Hstmt Hstep.
+        - destruct pc.
+          + inv Hstmt. inv Hstep.
+          + destruct pc0.
+            * inv Hstmt. inv Hstep.
+            * destruct pc0.
+              -- reflexivity.
+              -- inv Hstmt.
+      Qed.
+
       Lemma return_state_constant {π arg ψ ψ' ϵ ϵ' op pc s v} : 
         procedures impl op !! pc = Some s →
             ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Stmt.Return v ⟩ → ψ = ψ' ∧ ϵ = ϵ'.
       Proof.
         destruct op; cbn; intros Hstmt Hstep.
-        - destruct pc.
-          + cbn in *. inv Hstmt. inv Hstep.
-          + destruct pc0.
-            * inv Hstmt. inv Hstep. tauto.
-            * cbn in *. inv Hstmt.
-        - destruct pc.
-          + inv Hstmt. inv Hstep.
-          + destruct pc0.
-            * inv Hstmt. inv Hstep.
-            * cbn in *. destruct pc0.
-              -- inv Hstmt. inv Hstep. tauto.
-              -- inv Hstmt.
+        - pose proof return_pc_read Hstmt Hstep. subst. inv Hstmt. inv Hstep. tauto.
+        - pose proof return_pc_write Hstmt Hstep. subst. inv Hstmt. inv Hstep. tauto.
       Qed.
 
       Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
@@ -1013,7 +1029,11 @@ Section RWCAS.
                   ** inv H9. pose proof return_state_constant H8 H13 as [_ Hϵ].
                     rewrite <- Hϵ. constructor. intros π'.
                     destruct (decide (π = π')).
-                    --- subst. admit.
+                    --- subst. cbn in *. rewrite Map.lookup_rebind_same. destruct op0.
+                      *** pose proof return_pc_read H8 H13. subst. inv H8.
+                          inv H13. inv H11. eapply tracker_inv_read_return; eauto.
+                      *** pose proof return_pc_write H8 H13. subst. inv H8.
+                      inv H13. inv H11. eapply tracker_inv_read_return; eauto.
                     --- rewrite Map.lookup_rebind_diff by assumption.
                         apply tracker_inv_step_diff with (c := base).
                         +++ rewrite <- H2. now rewrite lookup_delete_ne.
