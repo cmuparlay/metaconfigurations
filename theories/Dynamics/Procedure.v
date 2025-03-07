@@ -385,10 +385,10 @@ Module Implementation.
       procedures impl op !! pc = Some s →
       ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩ →
       step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ' (Next {| pc := pc'; registers := ψ'; op := op; arg := arg |})
-    | step_implicit_return arg pc ψ op ϵ :
+    (* | step_implicit_return arg pc ψ op ϵ :
       (* Control has fallen off end of procedure *)
       procedures impl op !! pc = None →
-      step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ (Return ⊤ᵥ)
+      step_procedure π ϵ {| pc := pc; registers := ψ; op := op; arg := arg |} ϵ (Return ⊤ᵥ) *)
     | step_return arg pc s ψ op ϵ ϵ' v:
       procedures impl op !! pc = Some s →
       ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ , ϵ' , Stmt.Return v ⟩ →
@@ -930,6 +930,25 @@ Section RWCAS.
                 ++ simpl in H5. inv H5.
       Qed.
 
+      Lemma return_state_constant {π arg ψ ψ' ϵ ϵ' op pc s v} : 
+        procedures impl op !! pc = Some s →
+            ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Stmt.Return v ⟩ → ψ = ψ' ∧ ϵ = ϵ'.
+      Proof.
+        destruct op; cbn; intros Hstmt Hstep.
+        - destruct pc.
+          + cbn in *. inv Hstmt. inv Hstep.
+          + destruct pc0.
+            * inv Hstmt. inv Hstep. tauto.
+            * cbn in *. inv Hstmt.
+        - destruct pc.
+          + inv Hstmt. inv Hstep.
+          + destruct pc0.
+            * inv Hstmt. inv Hstep.
+            * cbn in *. destruct pc0.
+              -- inv Hstmt. inv Hstep. tauto.
+              -- inv Hstmt.
+      Qed.
+
       Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
       Proof.
         unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros.
@@ -967,15 +986,41 @@ Section RWCAS.
           + split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ g HS. inv HS.
-            pose proof H1 π. inv H5.
-            -- rewrite <- H2 in H7. now rewrite lookup_insert in H7.
-            -- simpl. rewrite <- H2 in H7. rewrite lookup_insert in H7. inv H7.
-               apply intermediate_pc_positive with (f := f0) in H0.
-               ++ contradiction.
-               ++ 
-
-               econstructor.
-               
+              pose proof H1 π. inv H5.
+              -- rewrite <- H2 in H7. now rewrite lookup_insert in H7.
+              -- simpl. rewrite <- H2 in H7. rewrite lookup_insert in H7. inv H7.
+                apply intermediate_pc_positive with (f := f0) in H0.
+                ++ contradiction.
+                ++ simpl. rewrite <- H2. rewrite lookup_insert. reflexivity.
+              -- admit.
+              -- admit.
+              -- admit.
+              -- admit.
+          + split.
+            * admit.
+            * unfold "⊆", relation_SubsetEq, refines. intros σ g HS.
+              inv HS. pose proof H1 π. inv H5;
+              try (erewrite <- H2 in H7; now rewrite lookup_delete in H7).
+              clear H7. simpl in *.
+              assert (g = ret (Map.rebind π (Linearized v) g) π).
+              { extensionality π'. unfold ret, Map.rebind. destruct (decide (π = π')).
+                - destruct e. simpl in *. symmetry. assumption.
+                - reflexivity. }
+              apply linearize_pending_intro with (πs := ⟨⟩) (f := g) (σ := ϵ base Cell).
+              -- rewrite H5. econstructor.
+                ++ apply IHr.
+                  ** assumption.
+                  ** inv H9. pose proof return_state_constant H8 H13 as [_ Hϵ].
+                    rewrite <- Hϵ. constructor. intros π'.
+                    destruct (decide (π = π')).
+                    --- subst. admit.
+                    --- rewrite Map.lookup_rebind_diff by assumption.
+                        apply tracker_inv_step_diff with (c := base).
+                        +++ rewrite <- H2. now rewrite lookup_delete_ne.
+                        +++ congruence.
+                        +++ easy.
+                ++ now rewrite Map.lookup_rebind_same.
+              -- constructor.
       Admitted.
 
 End RWCAS.
