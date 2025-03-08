@@ -43,7 +43,7 @@ Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (arg : Value.t) (ψ : stringmap
   | eval_invoke ω op e v res ϵ' σ :
     ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
     eval_inv π ϵ ω op v σ res →
-    ⟨ π , arg , ψ , ϵ , Invoke ω op e ⟩ ⇓ₑ ⟨ rebind ω σ ϵ' , res ⟩
+    ⟨ π , arg , ψ , ϵ , Invoke ω op e ⟩ ⇓ₑ ⟨ insert ω σ ϵ' , res ⟩
   | eval_bop bop e₁ e₂ v₁ v₂ v ϵ₁ ϵ₂ : 
     ⟨ π , arg , ψ , ϵ , e₁ ⟩ ⇓ₑ ⟨ ϵ₁ , v₁ ⟩ →
     ⟨ π , arg , ψ , ϵ₁ , e₂ ⟩ ⇓ₑ ⟨ ϵ₂ , v₂ ⟩ →

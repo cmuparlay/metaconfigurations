@@ -116,7 +116,7 @@ Inductive δ_multi {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).
     f' π = Pending op arg →
     (* And (σ', res) ∈ δ(σ, π, op, arg) *)
     (type ω).(δ) σ' π op arg σ'' res →
-    δ_multi σ f (πs ,, π) σ'' (Map.rebind π (Linearized res) f').
+    δ_multi σ f (πs ,, π) σ'' (Map.insert π (Linearized res) f').
 
 (* Lemma δ_multi_trans {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} σ σ' σ'' (f f' f'' : Π → status Π ω) : 
   δ_multi σ f σ' f' → δ_multi σ' f' σ'' f'' → δ_multi σ f σ'' f''.
@@ -127,9 +127,9 @@ Proof.
 Qed. *)
 
 Definition invoke `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) (op : (type ω).(OP)) (arg : Value.t) : Π → status Π ω :=
-  Map.rebind π (Pending op arg) f.
+  Map.insert π (Pending op arg) f.
 
-Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) := Map.rebind π Idle f.
+Definition ret `{EqDecision Π, Object Π Ω} {ω} (f : Π → status Π ω) (π : Π) := Map.insert π Idle f.
 
 (* A meta configuration relates states of the implemented object and the status of each process *)
 Definition meta_configuration Π {Ω} `{Object Π Ω} (ω : Ω) := (type ω).(Σ) → (Π → status Π ω) → Prop.
@@ -317,17 +317,17 @@ Module Atomic.
       (* If [π] has no outstanding operations*)
       f π = Idle →
       (* Then π can invoke an operation on the shared object *)
-      step (σ, f) π (Invoke op arg) (σ, Map.rebind π (Pending op arg) f)
+      step (σ, f) π (Invoke op arg) (σ, Map.insert π (Pending op arg) f)
     | step_linearize σ σ' f π op arg res :
       (* If [π] has invoked [op(arg)] but not yet responded *)
       f π = Pending op arg →
       (* And (σ', res) ∈ δ(σ, π, op, arg) *)
       (type ω).(δ) σ π op arg σ' res →
       (* Then [op(arg)] can linearize with value [res] and state [σ'] *)
-      step (σ, f) π Intermediate (σ', Map.rebind π (Linearized res) f)
+      step (σ, f) π Intermediate (σ', Map.insert π (Linearized res) f)
     | step_response σ f π v :
       f π = Linearized v →
-      step (σ, f) π (Response v) (σ, Map.rebind π Idle f).
+      step (σ, f) π (Response v) (σ, Map.insert π Idle f).
 
     Definition Run {Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (σ₀ : (type ω).(Σ)) : run Π ω → Prop := Run (σ₀, λ _, Idle) step.
 
@@ -982,8 +982,8 @@ Section RWCAS.
               inv HS. pose proof H1 π. inv H4;
               try (erewrite <- H2 in H6; rewrite lookup_insert in H6; inv H6).
               clear H7. simpl in *. rewrite <- H8.
-              assert (g = invoke (Map.rebind π Idle g) π op0 arg0).
-              { extensionality π'. unfold invoke, Map.rebind. destruct (decide (π = π')).
+              assert (g = invoke (Map.insert π Idle g) π op0 arg0).
+              { extensionality π'. unfold invoke, Map.insert. destruct (decide (π = π')).
                 - destruct e. simpl in *. symmetry. assumption.
                 - reflexivity. }
               eapply linearize_pending_intro with (πs := ⟨⟩) (f := g) (σ := ϵ base Cell).
@@ -992,12 +992,12 @@ Section RWCAS.
                   ** auto.
                   ** rewrite <- H8. econstructor. intros.
                      destruct (decide (π = π0)).
-                     --- subst. rewrite Map.lookup_rebind_same. now constructor.
-                     --- rewrite Map.lookup_rebind_diff; auto. apply tracker_inv_step_diff with (c := base).
+                     --- subst. rewrite Map.lookup_insert. now constructor.
+                     --- rewrite Map.lookup_insert_ne; auto. apply tracker_inv_step_diff with (c := base).
                       +++ rewrite <- H2. now rewrite lookup_insert_ne.
                       +++ now rewrite H8.
                       +++ easy.
-                ++ now rewrite Map.lookup_rebind_same.
+                ++ now rewrite Map.lookup_insert.
               -- rewrite H8. constructor.
           + split.
             * admit.
@@ -1008,18 +1008,31 @@ Section RWCAS.
                 apply intermediate_pc_positive with (f := f0) in H0.
                 ++ contradiction.
                 ++ simpl. rewrite <- H2. rewrite lookup_insert. reflexivity.
+              -- simpl. cbn in *. rewrite <- H2 in H7. rewrite lookup_insert in H7.
+                 inv H7. inv H9.
+                 ++ cbn in *. rewrite H8 in H7. inv H10. inv H7. inv H15.
+                    inv H9. inv H8. inv H14. inv H5. rewrite lookup_insert in H11.
+                    inv H11.
+                    eapply linearize_pending_intro with (πs := ⟨⟩ ,, π).
+                    ** shelve.
+                    ** rewrite H10 in H6.
+                    assert (g = Map.insert (Linearized (Map.lookup ω (ϵ base))) (Map.insert ))
+                      econstructor.
+                      with
+                        (σ := ϵ base Cell)
+                        (f := Map.insert π (@Pending Π ReadWrite.t _ _ ReadWrite.Cell _ arg0) g)
+                        (πs := ⟨⟩ ,, π).
               -- admit.
               -- admit.
-              -- admit.
-              -- admit.
+              -- admit. (* Impossible? *)
           + split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ g HS.
               inv HS. pose proof H1 π. inv H5;
               try (erewrite <- H2 in H7; now rewrite lookup_delete in H7).
               clear H7. simpl in *.
-              assert (g = ret (Map.rebind π (Linearized v) g) π).
-              { extensionality π'. unfold ret, Map.rebind. destruct (decide (π = π')).
+              assert (g = ret (Map.insert π (Linearized v) g) π).
+              { extensionality π'. unfold ret, Map.insert. destruct (decide (π = π')).
                 - destruct e. simpl in *. symmetry. assumption.
                 - reflexivity. }
               apply linearize_pending_intro with (πs := ⟨⟩) (f := g) (σ := ϵ base Cell).
@@ -1029,17 +1042,17 @@ Section RWCAS.
                   ** inv H9. pose proof return_state_constant H8 H13 as [_ Hϵ].
                     rewrite <- Hϵ. constructor. intros π'.
                     destruct (decide (π = π')).
-                    --- subst. cbn in *. rewrite Map.lookup_rebind_same. destruct op0.
+                    --- subst. cbn in *. rewrite Map.lookup_insert. destruct op0.
                       *** pose proof return_pc_read H8 H13. subst. inv H8.
                           inv H13. inv H11. eapply tracker_inv_read_return; eauto.
                       *** pose proof return_pc_write H8 H13. subst. inv H8.
-                      inv H13. inv H11. eapply tracker_inv_read_return; eauto.
-                    --- rewrite Map.lookup_rebind_diff by assumption.
+                      inv H13. inv H11. eapply tracker_inv_write_response; eauto.
+                    --- rewrite Map.lookup_insert_ne by assumption.
                         apply tracker_inv_step_diff with (c := base).
                         +++ rewrite <- H2. now rewrite lookup_delete_ne.
                         +++ congruence.
                         +++ easy.
-                ++ now rewrite Map.lookup_rebind_same.
+                ++ now rewrite Map.lookup_insert.
               -- constructor.
       Admitted.
 
@@ -1512,7 +1525,7 @@ Section LiftL.
         ⟨ π , arg , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_l e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁' ϵ₂ , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
-    rewrite rebind_union_distr_l. econstructor.
+    rewrite insert_union_distr_l. econstructor.
       + eapply IHe. eauto.
       + inv H8. econstructor. unfold Map.lookup in *. simpl in *. assumption.
   Qed.
@@ -1523,7 +1536,7 @@ Section LiftL.
         ⟨ π , arg , ψ , πₗ ϵ , e ⟩ ⇓ₑ ⟨ πₗ ϵ' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
-    rewrite πₗ_rebind_comm. econstructor.
+    rewrite πₗ_insert_comm. econstructor.
     + apply IHe. eassumption.
     + inv H8. constructor. simpl in *.
       replace (Map.lookup ω (πₗ ϵ0)) 
@@ -1537,7 +1550,7 @@ Section LiftL.
   Proof.
     induction e; intros; simpl in *; inv H1; intuition.
     - apply IHe in H7. subst. simpl in *.
-      replace (πᵣ ϵ0) with (πᵣ ϵ'0). apply rebind_l_πᵣ.
+      replace (πᵣ ϵ0) with (πᵣ ϵ'0). apply insert_l_πᵣ.
     - apply IHe1 in H5. apply IHe2 in H8. congruence.
     - inv H7. eauto.
     - apply IHe1 in H4. apply IHe2 in H7. congruence.
@@ -1658,7 +1671,7 @@ Section LiftR.
         ⟨ π , arg , ψ , disjoint_union ϵ₁ ϵ₂ , lift_term_r e ⟩ ⇓ₑ ⟨ disjoint_union ϵ₁ ϵ₂' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
-    rewrite rebind_union_distr_r. econstructor.
+    rewrite insert_union_distr_r. econstructor.
       + eapply IHe. eauto.
       + inv H8. econstructor. unfold Map.lookup in *. simpl in *. assumption.
   Qed.
@@ -1669,7 +1682,7 @@ Section LiftR.
         ⟨ π , arg , ψ , πᵣ ϵ , e ⟩ ⇓ₑ ⟨ πᵣ ϵ' , v ⟩.
   Proof.
     induction e; intros; simpl in *; inv H1; try (econstructor; eauto).
-    rewrite πᵣ_rebind_comm. econstructor.
+    rewrite πᵣ_insert_comm. econstructor.
     + apply IHe. eassumption.
     + inv H8. constructor. simpl in *.
       replace (Map.lookup ω (πᵣ ϵ0)) 
@@ -1683,7 +1696,7 @@ Section LiftR.
   Proof.
     induction e; intros; simpl in *; inv H1; intuition.
     - apply IHe in H7. simpl in *.
-      replace (πₗ ϵ0) with (πₗ ϵ'0).  apply rebind_r_πₗ.
+      replace (πₗ ϵ0) with (πₗ ϵ'0).  apply insert_r_πₗ.
     - etransitivity.
       + eapply IHe1. eassumption.
       + eapply IHe2. eassumption.
