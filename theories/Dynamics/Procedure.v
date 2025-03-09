@@ -1067,9 +1067,21 @@ Section RWCAS.
               -- cbn. rewrite <- H2 in H8. rewrite lookup_insert in H8. 
                  inv H8. cbn in *. inv H10. inv H7. inv H12.
                  inv H9. inv H8. inv H13. destruct ω. inv H5.
-                 rewrite H10. econstructor.
-                 ++ admit.
-                 ++ admit.
+                 rewrite H10. eapply linearize_pending_intro with (f := g).
+                 ++ apply IHr.
+                  ** assumption.
+                  ** constructor. intros π'. destruct (decide (π = π')).
+                    --- subst. rewrite <- H6.
+                    remember ({| op := _; pc := 0; arg := arg0; registers := ψ |}).
+                    replace (Pending _ _) with (Pending f.(op) f.(arg)) by now rewrite Heqf.
+                    eapply tracker_inv_invoke.
+                    +++ assumption.
+                    +++ now rewrite Heqf. 
+                    --- subst. unfold "!!!", Map.map_lookup_total. apply tracker_inv_step_diff with (c := base).
+                    +++ rewrite <- H2. now rewrite lookup_insert_ne by assumption.
+                    +++ congruence.
+                    +++ easy.
+                ++ rewrite H10. econstructor.
               -- admit.
               -- admit. (* Impossible? *)
           + split.
