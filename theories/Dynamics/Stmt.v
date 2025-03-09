@@ -38,7 +38,7 @@ Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (arg : Value.t) (ψ : stringmap
   | eval_invoke ω op e ϵ' v :
     ⟨ π , arg , ψ , ϵ , Term.Invoke ω op e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
     ⟨ π , arg , ψ , ϵ , Invoke (Invocation ω op e) ⟩ ⇓ₛ ⟨ ψ , ϵ' , Continue ⟩
-  | eval_return e v :
-    ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ , v ⟩ →
-    ⟨ π , arg , ψ , ϵ , Syntax.Stmt.Return e ⟩ ⇓ₛ ⟨ ψ , ϵ , Return v ⟩
+  | eval_return e ϵ' v :
+    ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
+    ⟨ π , arg , ψ , ϵ , Syntax.Stmt.Return e ⟩ ⇓ₛ ⟨ ψ , ϵ' , Return v ⟩
 where "⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , sig ⟩" := (eval π arg ψ ϵ s ψ' ϵ' sig) : dynamics_scope.

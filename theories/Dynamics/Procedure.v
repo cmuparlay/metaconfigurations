@@ -111,12 +111,12 @@ Inductive SnocForall {A} (P : A → Prop) : snoc_list A → Prop :=
 Inductive δ_multi {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} : (type ω).(Σ) → (Π → status Π ω) → snoc_list Π → (type ω).(Σ) → (Π → status Π ω) → Prop :=
   | δ_multi_refl σ f : δ_multi σ f ⟨⟩ σ f
   | δ_multi_step f σ π πs op arg σ' res σ'' f' :
-    δ_multi σ f πs σ' f' →
+    δ_multi σ (f : Π → status Π ω) πs σ' (f' : Π → status Π ω) →
     (* if [π] has invoked [op(arg)], but not returned *)
-    f' π = Pending op arg →
+    f' !!! π = Pending op arg →
     (* And (σ', res) ∈ δ(σ, π, op, arg) *)
     (type ω).(δ) σ' π op arg σ'' res →
-    δ_multi σ f (πs ,, π) σ'' (Map.insert π (Linearized res) f').
+    δ_multi σ f (πs ,, π) σ'' (<[π := Linearized res]>f').
 
 (* Lemma δ_multi_trans {Π Ω} `{EqDecision Π, Object Π Ω} {ω : Ω} σ σ' σ'' (f f' f'' : Π → status Π ω) : 
   δ_multi σ f σ' f' → δ_multi σ' f' σ'' f'' → δ_multi σ f σ'' f''.
@@ -143,7 +143,7 @@ Definition singleton {A B} (R : A → B → Prop) (x : A) (y : B) : Prop :=
   evolve_inv_intro σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
-    f π = Idle →
+    f !!! π = Idle →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
     δ_multi σ (invoke f π op arg) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
@@ -170,13 +170,13 @@ Variant filter_map {A B C D} (f : A → B → option (C * D)%type) (P : A → B 
 Variant evolve_inv `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) op arg (C : meta_configuration Π ω) : meta_configuration Π ω :=
   | evolve_inv_intro σ f :
     C σ f →
-    f π = Idle →
+    f !!! π = Idle →
     evolve_inv π op arg C σ (invoke f π op arg).
 
 Variant evolve_ret `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) v (C : meta_configuration Π ω) : meta_configuration Π ω :=
   | evolve_ret_intro σ f :
     C σ f →
-    f π = Linearized v →
+    f !!! π = Linearized v →
     evolve_ret π v C σ (ret f π).
 
 Variant linearize_pending `{EqDecision Π, Object Π Ω} {ω : Ω} (C : meta_configuration Π ω) : meta_configuration Π ω :=
@@ -199,7 +199,7 @@ Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω �
   | evolve_inv C op arg σ f πs σ' f' :
     (* If (σ, f) ∈ C *)
     C σ f →
-    f π = Idle →
+    f !!! π = Idle →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
     δ_multi σ (invoke f π op arg) πs σ' f' →
     (* Then (σ', f') is in the resulting metaconfiguration *)
@@ -212,7 +212,7 @@ Variant evolve `{EqDecision Π, Object Π Ω} {ω : Ω} (π : Π) : line Π ω �
     (* Then (σ', f') is in the resulting metaconfiguration *)
     evolve π Intermediate C σ' f'
   | evolve_ret C res σ f πs σ' f' :
-    f π = Linearized res →
+    f !!! π = Linearized res →
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
@@ -239,7 +239,7 @@ Qed.
 
 (* Variant evolve_ret `{EqDecision Π, Object Π Ω} (ω : Ω) (π : Π) (res : Value.t) (C : meta_configuration Π ω) : meta_configuration Π ω :=
   evolve_ret_intro σ f πs σ' f' :
-    f π = Linearized res →
+    f !!! π = Linearized res →
     (* If (σ, f) ∈ C *)
     C σ f →
     (* And atomic configuration (σ', f') results after linearizing every outstanding operation of [πs] *)
@@ -315,18 +315,18 @@ Module Atomic.
   Inductive step `{Countable Π, Object Π Ω} {ω : Ω} : configuration Π ω → Π → line Π ω → configuration Π ω → Prop :=
     | step_invoke σ f π op arg :
       (* If [π] has no outstanding operations*)
-      f π = Idle →
+      f !!! π = Idle →
       (* Then π can invoke an operation on the shared object *)
       step (σ, f) π (Invoke op arg) (σ, Map.insert π (Pending op arg) f)
     | step_linearize σ σ' f π op arg res :
       (* If [π] has invoked [op(arg)] but not yet responded *)
-      f π = Pending op arg →
+      f !!! π = Pending op arg →
       (* And (σ', res) ∈ δ(σ, π, op, arg) *)
       (type ω).(δ) σ π op arg σ' res →
       (* Then [op(arg)] can linearize with value [res] and state [σ'] *)
       step (σ, f) π Intermediate (σ', Map.insert π (Linearized res) f)
     | step_response σ f π v :
-      f π = Linearized v →
+      f !!! π = Linearized v →
       step (σ, f) π (Response v) (σ, Map.insert π Idle f).
 
     Definition Run {Π : Type} `{Countable Π, Object Π Ω} {ω : Ω} (σ₀ : (type ω).(Σ)) : run Π ω → Prop := Run (σ₀, λ _, Idle) step.
@@ -513,7 +513,7 @@ Module PartialTracker.
   Variable impl : Implementation Π Ω ω.
 
   Variant initial_tracker : meta_configuration Π ω :=
-    initial_tracker_intro f : (∀ π, f π = Idle) → initial_tracker impl.(initial_state) f.
+    initial_tracker_intro f : (∀ π, f !!! π = Idle) → initial_tracker impl.(initial_state) f.
 
   Section Soundness.
 
@@ -886,7 +886,7 @@ Section RWCAS.
       Qed.
 
       Variant S (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) : meta_configuration Π ReadWrite.Cell :=
-        | S_intro f : (∀ π : Π, tracker_inv c π (f π)) → S c (c.(ϵ) ReadCAS.Cell) f.
+        | S_intro f : (∀ π : Π, tracker_inv c π (f !!! π)) → S c (c.(ϵ) ReadCAS.Cell) f.
 
       Require Import Coq.Logic.FunctionalExtensionality.
 
@@ -956,13 +956,34 @@ Section RWCAS.
               -- inv Hstmt.
       Qed.
 
+      Set Typeclasses Strict Resolution.
+
       Lemma return_state_constant {π arg ψ ψ' ϵ ϵ' op pc s v} : 
         procedures impl op !! pc = Some s →
-            ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Stmt.Return v ⟩ → ψ = ψ' ∧ ϵ = ϵ'.
+          ⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Stmt.Return v ⟩ → ψ = ψ' ∧ ϵ = ϵ'.
       Proof.
         destruct op; cbn; intros Hstmt Hstep.
-        - pose proof return_pc_read Hstmt Hstep. subst. inv Hstmt. inv Hstep. tauto.
-        - pose proof return_pc_write Hstmt Hstep. subst. inv Hstmt. inv Hstep. tauto.
+        - pose proof return_pc_read Hstmt Hstep. subst. inv Hstmt. inv Hstep. inv H4. tauto.
+        - pose proof return_pc_write Hstmt Hstep. subst. inv Hstmt. inv Hstep. inv H4. tauto.
+      Qed.
+
+      Lemma no_goto {π arg ψ ψ' ϵ ϵ' op pc pc' s} :
+        procedures impl op !! pc = Some s →
+          ¬ (⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ ψ' , ϵ' , Goto pc' ⟩).
+      Proof.
+        destruct op.
+        - destruct pc.
+          + cbn. intros. inv H0. unfold not. intros. inv H0.
+          + destruct pc0.
+            * cbn. intros. inv H0. unfold not. intros. inv H0.
+            * cbn. intros. inv H0.
+        - destruct pc.
+          + cbn. intros. inv H0. unfold not. intros. inv H0.
+          + destruct pc0.
+            * cbn. intros. inv H0. unfold not. intros. inv H0.
+            * cbn. intros. destruct pc0.
+              -- inv H0. intros. unfold not. intros. inv H0.
+              -- inv H0.
       Qed.
 
       Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
@@ -970,7 +991,7 @@ Section RWCAS.
         unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros.
         - inv H0. simpl. split.
           + unfold initial_configuration. eexists. eexists. econstructor. intros.
-            econstructor. auto.
+            now econstructor.
           + unfold initial_configuration, FullTracker.σ₀. simpl.
             unfold FullTracker.initial_tracker. unfold "⊆", relation_SubsetEq, refines.
             intros. inv H0. simpl. constructor. intros.
@@ -982,22 +1003,25 @@ Section RWCAS.
               inv HS. pose proof H1 π. inv H4;
               try (erewrite <- H2 in H6; rewrite lookup_insert in H6; inv H6).
               clear H7. simpl in *. rewrite <- H8.
-              assert (g = invoke (Map.insert π Idle g) π op0 arg0).
-              { extensionality π'. unfold invoke, Map.insert. destruct (decide (π = π')).
-                - destruct e. simpl in *. symmetry. assumption.
-                - reflexivity. }
+              assert (g = invoke (<[π := Idle]> g) π op0 arg0).
+              { unfold invoke, insert, Map.map_insert.
+                rewrite H5. unfold "!!!", Map.map_lookup_total.
+                now rewrite Map.insert_insert. }
               eapply linearize_pending_intro with (πs := ⟨⟩) (f := g) (σ := ϵ base Cell).
               -- rewrite H4. econstructor.
                 ++ apply IHr.
                   ** auto.
                   ** rewrite <- H8. econstructor. intros.
                      destruct (decide (π = π0)).
-                     --- subst. rewrite Map.lookup_insert. now constructor.
-                     --- rewrite Map.lookup_insert_ne; auto. apply tracker_inv_step_diff with (c := base).
+                     --- subst. unfold "!!!", insert, Map.map_lookup_total, Map.map_insert.
+                         rewrite Map.lookup_insert. now constructor.
+                     --- unfold insert, "!!!", Map.map_insert, Map.map_lookup_total.
+                         rewrite Map.lookup_insert_ne; auto. apply tracker_inv_step_diff with (c := base).
                       +++ rewrite <- H2. now rewrite lookup_insert_ne.
                       +++ now rewrite H8.
                       +++ easy.
-                ++ now rewrite Map.lookup_insert.
+                ++ unfold "!!!", insert, Map.map_lookup_total, Map.map_insert.
+                   now rewrite Map.lookup_insert.
               -- rewrite H8. constructor.
           + split.
             * admit.
@@ -1012,17 +1036,25 @@ Section RWCAS.
                  inv H7. inv H9.
                  ++ cbn in *. rewrite H8 in H7. inv H10. inv H7. inv H15.
                     inv H9. inv H8. inv H14. inv H5. rewrite lookup_insert in H11.
-                    inv H11.
-                    eapply linearize_pending_intro with (πs := ⟨⟩ ,, π).
-                    ** shelve.
-                    ** rewrite H10 in H6.
-                    assert (g = Map.insert (Linearized (Map.lookup ω (ϵ base))) (Map.insert ))
-                      econstructor.
+                    inv H11. destruct ω. cbn in *.
+                    rewrite H10. rewrite H10 in H6. rewrite H10 in H2.
+                    eapply linearize_pending_intro 
                       with
-                        (σ := ϵ base Cell)
                         (f := Map.insert π (@Pending Π ReadWrite.t _ _ ReadWrite.Cell _ arg0) g)
-                        (πs := ⟨⟩ ,, π).
-              -- admit.
+                        (πs := ⟨⟩ ,, π)
+                        (σ := ϵ base Cell).
+                    ** shelve.
+                    ** assert (g = Map.insert π (@Linearized Π ReadWrite.t _ _ _ (Map.lookup Cell (ϵ base))) (Map.insert π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Read arg0) g)).
+                      { replace (Linearized (Map.lookup Cell (ϵ base))) with (g !!! π).
+                        unfold "!!!", Map.map_lookup_total. now rewrite Map.insert_insert. }
+                      rewrite H5. econstructor; [
+                          idtac
+                        | unfold "!!!", Map.map_lookup_total; now rewrite Map.lookup_insert
+                        | unfold Map.lookup; constructor
+                      ].
+                      rewrite <- H5. econstructor.
+                ++ exfalso. eapply no_goto; eauto.
+              -- cbn. econstructor. admit.
               -- admit.
               -- admit. (* Impossible? *)
           + split.
@@ -1268,7 +1300,7 @@ Module Adequacy (Impl : Implementation).
                     (* Such that there exists some sequence of processes [πs] such 
                       that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
                     δ_multi σ (invoke f π op arg) πs σ' f' ∧
-                      f π = Idle.
+                      f !!! π = Idle.
     Proof.
       intros Hatomic.
       (* Need to generalize over the final configuration of the atomic run *)
@@ -1342,7 +1374,7 @@ Module Adequacy (Impl : Implementation).
                     (* Such that there exists some sequence of processes [πs] such 
                       that (σ', f') results from first invoking [op(arg)] and then linearizing each of [πs] *)
                     δ_multi σ (ret f π) πs σ' f' ∧
-                      f π = Linearized v.
+                      f !!! π = Linearized v.
     Proof.
       intros Hatomic.
       (* Need to generalize over the final configuration of the atomic run *)
