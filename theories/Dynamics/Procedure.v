@@ -986,7 +986,7 @@ Section RWCAS.
               -- inv H0.
       Qed.
 
-      Lemma outstanding_finite : FullTracker.invariant impl (λ c M, ∀ σ f, S c σ f → ∃ l, ∀ π : Π, In π l ↔ f !!! π ≠ Idle).
+      (* Lemma outstanding_finite : FullTracker.invariant impl (λ c M, ∀ σ f, S c σ f → ∃ l, ∀ π : Π, In π l ↔ f !!! π ≠ Idle).
       Proof.
         unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros Hrun.
         - inv Hrun. cbn in *. intros σ f HS. exists []. intros. inv HS.
@@ -1063,7 +1063,7 @@ Section RWCAS.
             -- cbn. right. pose proof Hfin π' as [_ Hrev].
                unfold insert, "!!!", Map.map_insert, Map.map_lookup_total in *.
                rewrite Map.lookup_insert_ne in Hrev by assumption.
-               auto.
+               auto. *)
 
 
       Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M ∧ (∀ σ f, S c σ f → (∃ l, ∀ π, In π l ↔ f !!! π ≠ Idle))).
@@ -1167,9 +1167,13 @@ Section RWCAS.
                     +++ congruence.
                     +++ easy.
                 ++ rewrite H6. econstructor.
+              -- simpl. cbn in *. rewrite <- H2 in H6. rewrite lookup_insert in H6. inv H8.
+                cbn in *. rewrite H7 in H5. inv H10. inv H5. inv H14.
+                inv H8. inv H13. rewrite lookup_insert in H9. inv H9. inv H5. destruct ω. cbn in *.
+                exfalso. apply H11. unfold Map.lookup. congruence.
               -- admit.
-              -- cbn in *. rewrite <- H2 in H6. rewrite lookup_insert in H6. inv H8.
-                cbn in *. rewrite H7 in H5. inv H10. inv H5. inv H6.
+                cbn in *. rewrite <- H2 in H6. rewrite lookup_insert in H6. inv H8.
+                (* cbn in *. rewrite H7 in H5. inv H10. inv H5. inv H6.
                 inv H8. inv H11. inv H9. inv H10. inv H13. destruct ω.
                 inv H5.
                 ++ destruct ω0.
@@ -1195,7 +1199,7 @@ Section RWCAS.
                       apply tracker_inv_step_diff with (c := base).
                       +++ rewrite <- H2. now rewrite lookup_insert_ne by assumption.
                       +++ congruence.
-                      +++ easy.
+                      +++ easy. *)
                 ** assert (g = Map.insert π (@Linearized Π ReadWrite.t _ _ _ (Map.lookup Cell (ϵ base))) (Map.insert π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Read arg0) g)).
                   { replace (Linearized (Map.lookup Cell (ϵ base))) with (g !!! π).
                     unfold "!!!", Map.map_lookup_total. now rewrite Map.insert_insert. }
