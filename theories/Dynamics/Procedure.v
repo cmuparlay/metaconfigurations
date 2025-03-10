@@ -838,7 +838,7 @@ Section RWCAS.
     Import Augmented.
     Import Implementation.
 
-    Variant tracker_inv (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) (π : Π) : status Π ReadWrite.Cell → Prop :=
+    Variant tracker_inv (c : Implementation.configuration Π ReadCAS.t ReadWrite.Cell) (π : Π) : status Π ReadWrite.Cell → Type :=
       | tracker_inv_idle : c.(outstanding) !! π = None → tracker_inv c π Idle
       | tracker_inv_invoke f : 
         c.(outstanding) !! π = Some f →
@@ -986,26 +986,110 @@ Section RWCAS.
               -- inv H0.
       Qed.
 
-      Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M).
+      Lemma outstanding_finite : FullTracker.invariant impl (λ c M, ∀ σ f, S c σ f → ∃ l, ∀ π : Π, In π l ↔ f !!! π ≠ Idle).
+      Proof.
+        unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros Hrun.
+        - inv Hrun. cbn in *. intros σ f HS. exists []. intros. inv HS.
+          pose proof X π as Hinv. inv Hinv. split.
+          + intros. inv H2.
+          + intros. contradiction.
+        - inv Hrun. inv H5. inv H1. inv H0.
+          + cbn in *. intros σ f HS.
+            pose proof IHr H2 as IH. pose proof IH σ (<[π := Idle]>f) as IH.
+            inv HS. pose proof X π as Hinv. inv Hinv;
+            (rewrite <- H1 in H3; rewrite lookup_insert in H3; inv H3).
+            cbn in *.
+            assert (S (base_configuration (final r)) (ϵ base Cell) (<[π:=Idle]> f)) as HS.
+            { rewrite <- H7. econstructor. intros π'.
+              destruct (decide (π = π')).
+              - subst. unfold insert, Map.map_insert, "!!!", Map.map_lookup_total. 
+                rewrite Map.lookup_insert. now econstructor.
+              - subst. unfold insert, Map.map_insert, "!!!", Map.map_lookup_total. 
+                rewrite Map.lookup_insert_ne by assumption.
+                apply tracker_inv_step_diff with (c := base).
+                + rewrite <- H1. now rewrite lookup_insert_ne by assumption.
+                + now rewrite H7.
+                + auto. }
+            pose proof IH HS as [l Hfin].
+            exists (π :: l).
+            intros π'. split.
+            * intros Hmem. inv Hmem.
+              -- unfold not. rewrite <- H0. intros. discriminate.
+              -- pose proof Hfin π' as [Hfwd _]. destruct (decide (π = π')).
+                ++ subst. unfold insert, "!!!", Map.map_insert, Map.map_lookup_total in *.
+                   rewrite Map.lookup_insert in Hfwd. exfalso.
+                   pose proof Hfwd H3. contradiction.
+                ++ unfold insert, "!!!", Map.map_insert, Map.map_lookup_total in *.
+                   rewrite Map.lookup_insert_ne in Hfwd by assumption.
+                   auto.
+            * intros Hneq. destruct (decide (π = π')).
+              -- subst. cbn. tauto.
+              -- cbn. right. pose proof Hfin π' as [_ Hrev].
+                 unfold insert, "!!!", Map.map_insert, Map.map_lookup_total in *.
+                 rewrite Map.lookup_insert_ne in Hrev by assumption.
+                 auto.
+          + cbn in *. intros σ F HS. inv H8.
+            * admit.
+            * inv H9.
+          pose proof IHr H2 as IH. pose proof IH σ (<[π := Pending ]>F) as IH.
+          inv HS. pose proof X π as Hinv. inv Hinv;
+          (rewrite <- H1 in H3; rewrite lookup_insert in H3; inv H3).
+          cbn in *. inv
+          assert (S (base_configuration (final r)) (ϵ base Cell) (<[π:=Idle]> F)) as HS.
+          { rewrite <- H7. econstructor. intros π'.
+            destruct (decide (π = π')).
+            - subst. unfold insert, Map.map_insert, "!!!", Map.map_lookup_total. 
+              rewrite Map.lookup_insert. now econstructor.
+            - subst. unfold insert, Map.map_insert, "!!!", Map.map_lookup_total. 
+              rewrite Map.lookup_insert_ne by assumption.
+              apply tracker_inv_step_diff with (c := base).
+              + rewrite <- H1. now rewrite lookup_insert_ne by assumption.
+              + now rewrite H7.
+              + auto. }
+          pose proof IH HS as [l Hfin].
+          exists (π :: l).
+          intros π'. split.
+          * intros Hmem. inv Hmem.
+            -- unfold not. rewrite <- H0. intros. discriminate.
+            -- pose proof Hfin π' as [Hfwd _]. destruct (decide (π = π')).
+              ++ subst. unfold insert, "!!!", Map.map_insert, Map.map_lookup_total in *.
+                 rewrite Map.lookup_insert in Hfwd. exfalso.
+                 pose proof Hfwd H3. contradiction.
+              ++ unfold insert, "!!!", Map.map_insert, Map.map_lookup_total in *.
+                 rewrite Map.lookup_insert_ne in Hfwd by assumption.
+                 auto.
+          * intros Hneq. destruct (decide (π = π')).
+            -- subst. cbn. tauto.
+            -- cbn. right. pose proof Hfin π' as [_ Hrev].
+               unfold insert, "!!!", Map.map_insert, Map.map_lookup_total in *.
+               rewrite Map.lookup_insert_ne in Hrev by assumption.
+               auto.
+
+
+      Lemma linearizable : FullTracker.invariant impl (λ c M, inhabited (S c) ∧ S c ⊆ M ∧ (∀ σ f, S c σ f → (∃ l, ∀ π, In π l ↔ f !!! π ≠ Idle))).
       Proof.
         unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros.
         - inv H0. simpl. split.
           + unfold initial_configuration. eexists. eexists. econstructor. intros.
             now econstructor.
-          + unfold initial_configuration, FullTracker.σ₀. simpl.
-            unfold FullTracker.initial_tracker. unfold "⊆", relation_SubsetEq, refines.
-            intros. inv H0. simpl. constructor. intros.
-            pose proof (H1 π). inv H0. now unfold Map.lookup in *.
+          + split.
+            * unfold initial_configuration, FullTracker.σ₀. simpl.
+              unfold FullTracker.initial_tracker. unfold "⊆", relation_SubsetEq, refines.
+              intros. inv H0. simpl. constructor. intros.
+              pose proof (X π). inv X0. now unfold Map.lookup in *.
+            * intros σ f HS. exists []. intros. inv HS. split.
+              -- intros Hin. inv Hin.
+              -- intros Hneq. pose proof X π as Hinv. inv Hinv.   
         - inversion H0. subst. inv H6. inv H2. simpl in *. inv H1.
-          + simpl in *. split.
+          + simpl in *. repeat split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ g HS.
-              inv HS. pose proof H1 π. inv H4;
-              try (erewrite <- H2 in H6; rewrite lookup_insert in H6; inv H6).
-              clear H7. simpl in *. rewrite <- H8.
+              inv HS. pose proof X π. inv X0;
+              try (erewrite <- H2 in H4; rewrite lookup_insert in H4; inv H4).
+              simpl in *. inv H5. rewrite <- H8.
               assert (g = invoke (<[π := Idle]> g) π op0 arg0).
               { unfold invoke, insert, Map.map_insert.
-                rewrite H5. unfold "!!!", Map.map_lookup_total.
+                rewrite H1. unfold "!!!", Map.map_lookup_total.
                 now rewrite Map.insert_insert. }
               eapply linearize_pending_intro with (πs := ⟨⟩) (f := g) (σ := ϵ base Cell).
               -- rewrite H4. econstructor.
@@ -1023,24 +1107,25 @@ Section RWCAS.
                 ++ unfold "!!!", insert, Map.map_lookup_total, Map.map_insert.
                    now rewrite Map.lookup_insert.
               -- rewrite H8. constructor.
-          + split.
+            * admit.
+          + repeat split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ g HS. inv HS.
-              pose proof H1 π. inv H9; [ idtac | exfalso; eapply no_goto; eauto ]. inv H5.
-              -- rewrite <- H2 in H8. now rewrite lookup_insert in H8.
-              -- simpl. rewrite <- H2 in H8. rewrite lookup_insert in H8. inv H8.
-              -- simpl. cbn in *. rewrite <- H2 in H8. rewrite lookup_insert in H8. inv H8.
-                 cbn in *. rewrite H9 in H7. inv H10. inv H7. inv H12.
-                 inv H9. inv H8. inv H14. inv H5. rewrite lookup_insert in H11.
-                 inv H11. destruct ω. cbn in *.
-                 rewrite H10. rewrite H10 in H6. rewrite H10 in H2.
+              pose proof X π as Hinvπ. inv H9; [ idtac | exfalso; eapply no_goto; eauto ]. inv Hinvπ.
+              -- rewrite <- H2 in H6. now rewrite lookup_insert in H6.
+              -- simpl. rewrite <- H2 in H6. rewrite lookup_insert in H6. inv H6.
+              -- simpl. cbn in *. rewrite <- H2 in H6. rewrite lookup_insert in H6. inv H8.
+                 cbn in *. rewrite H7 in H5. inv H10. inv H5. inv H13.
+                 inv H9. inv H8. inv H12. inv H5. rewrite lookup_insert in H7.
+                 inv H7. destruct ω. cbn in *.
+                 rewrite H6. rewrite H6 in H1. rewrite H6 in H2.
                  eapply linearize_pending_intro 
                    with
                     (f := Map.insert π (@Pending Π ReadWrite.t _ _ ReadWrite.Cell _ arg0) g)
                     (πs := ⟨⟩ ,, π)
                     (σ := ϵ base Cell).
                  instantiate (1 := ReadWrite.Read).
-                ** eapply IHr; eauto. rewrite <- H10. econstructor.
+                ** eapply IHr; eauto. rewrite <- H6. econstructor.
                    intros π'. destruct (decide (π = π')).
                    --- subst. unfold "!!!", Map.map_lookup_total. rewrite Map.lookup_insert.
                        remember ({| op := _; pc := 0; arg := arg0; registers := ψ |}).
@@ -1064,14 +1149,14 @@ Section RWCAS.
                     | unfold Map.lookup; constructor
                   ].
                   rewrite <- H5. econstructor.
-              -- cbn. rewrite <- H2 in H8. rewrite lookup_insert in H8. 
-                 inv H8. cbn in *. inv H10. inv H7. inv H12.
-                 inv H9. inv H8. inv H13. destruct ω. inv H5.
-                 rewrite H10. eapply linearize_pending_intro with (f := g).
+              -- simpl. cbn in *. rewrite <- H2 in H6. rewrite lookup_insert in H6. inv H8.
+                cbn in *. rewrite H7 in H5. inv H10. inv H5. inv H12.
+                inv H8. inv H11. inv H5. destruct ω. cbn in *.
+                rewrite H6. rewrite H6 in H2. eapply linearize_pending_intro with (f := g).
                  ++ apply IHr.
                   ** assumption.
                   ** constructor. intros π'. destruct (decide (π = π')).
-                    --- subst. rewrite <- H6.
+                    --- subst. rewrite <- H1.
                     remember ({| op := _; pc := 0; arg := arg0; registers := ψ |}).
                     replace (Pending _ _) with (Pending f.(op) f.(arg)) by now rewrite Heqf.
                     eapply tracker_inv_invoke.
@@ -1081,9 +1166,45 @@ Section RWCAS.
                     +++ rewrite <- H2. now rewrite lookup_insert_ne by assumption.
                     +++ congruence.
                     +++ easy.
-                ++ rewrite H10. econstructor.
+                ++ rewrite H6. econstructor.
               -- admit.
-              -- admit. (* Impossible? *)
+              -- cbn in *. rewrite <- H2 in H6. rewrite lookup_insert in H6. inv H8.
+                cbn in *. rewrite H7 in H5. inv H10. inv H5. inv H6.
+                inv H8. inv H11. inv H9. inv H10. inv H13. destruct ω.
+                inv H5.
+                ++ destruct ω0.
+                eapply linearize_pending_intro with ().
+                rewrite H6. rewrite H6 in H2.
+                 eapply linearize_pending_intro 
+                    with
+                    (f := Map.insert π (@Pending Π ReadWrite.t _ _ ReadWrite.Cell _ arg0) g)
+                    (πs := ⟨⟩ ,, π)
+                    (σ := ϵ base Cell).
+                  instantiate (1 := ReadWrite.Read).
+                ** eapply IHr; eauto. rewrite <- H10. econstructor.
+                    intros π'. destruct (decide (π = π')).
+                    --- subst. unfold "!!!", Map.map_lookup_total. rewrite Map.lookup_insert.
+                        remember ({| op := _; pc := 0; arg := arg0; registers := ψ |}).
+                        replace arg0 with (f.(arg)) by now rewrite Heqf.
+                        replace ReadWrite.Read with (f.(op)).
+                        constructor.
+                        +++ assumption.
+                        +++ now rewrite Heqf.
+                        +++ now rewrite Heqf.
+                  --- subst. unfold "!!!", Map.map_lookup_total. rewrite Map.lookup_insert_ne by easy.
+                      apply tracker_inv_step_diff with (c := base).
+                      +++ rewrite <- H2. now rewrite lookup_insert_ne by assumption.
+                      +++ congruence.
+                      +++ easy.
+                ** assert (g = Map.insert π (@Linearized Π ReadWrite.t _ _ _ (Map.lookup Cell (ϵ base))) (Map.insert π (@Pending Π ReadWrite.t _ _ _ ReadWrite.Read arg0) g)).
+                  { replace (Linearized (Map.lookup Cell (ϵ base))) with (g !!! π).
+                    unfold "!!!", Map.map_lookup_total. now rewrite Map.insert_insert. }
+                  rewrite H5. econstructor; [
+                      idtac
+                    | unfold "!!!", Map.map_lookup_total; now rewrite Map.lookup_insert
+                    | unfold Map.lookup; constructor
+                  ].
+                  rewrite <- H5. econstructor. (* Impossible? *)
           + split.
             * admit.
             * unfold "⊆", relation_SubsetEq, refines. intros σ g HS.
