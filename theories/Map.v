@@ -13,6 +13,8 @@ Defined.
 
 Definition lookup {K : Type} {V : K → Type} `{EqDecision K} (k : K) (m : dependent K V) : V k := m k.
 
+Module Dep.
+
 Theorem lookup_insert {K : Type} {V : K → Type} `{EqDecision K} (k : K) (v : V k) (m : dependent K V) : 
   lookup k (insert k v m) = v.
 Proof.
@@ -38,6 +40,18 @@ Proof.
     now rewrite lookup_insert_ne.
 Qed.
 
+Lemma η `{EqDecision K} {V : K → Type} (k : K) (m : dependent K V) :
+  insert k (lookup k m) m = m.
+Proof.
+  extensionality k'. destruct (decide (k = k')).
+  - subst. fold (lookup k' (insert k' (lookup k' m) m)).
+    now rewrite lookup_insert.
+  - fold (lookup k' (insert k (lookup k m) m)).
+    now rewrite lookup_insert_ne by assumption.
+Qed.
+
+End Dep.
+
 Definition t (K V : Type) := dependent K (λ _, V).
 
 Instance map_insert K `{EqDecision K} V : Insert K V (t K V) := insert.
@@ -45,3 +59,24 @@ Instance map_insert K `{EqDecision K} V : Insert K V (t K V) := insert.
 Instance map_lookup_total K `{EqDecision K} V : LookupTotal K V (t K V) := lookup.
 
 Definition with_default {K V : Type} (d : V) : t K V := λ _, d.
+
+Lemma η `{EqDecision K} {V} (k : K) (m : t K V) :
+  <[k := m !!! k]> m = m.
+Proof.
+  apply Dep.η.
+Qed.
+
+Lemma lookup_insert `{EqDecision K} {V} (k : K) (v : V) (m : t K V) : 
+  <[k := v]> m !!! k = v.
+Proof.
+  destruct (decide (k = k)); cbv; 
+  destruct (EqDecision0 k k); intuition.
+  dependent destruction e0. reflexivity.
+Qed.
+
+Lemma lookup_insert_ne `{EqDecision K} {V} (k k' : K) (v : V) (m : t K V) : 
+  k ≠ k' → <[k := v]> m !!! k' = m !!! k'.
+Proof.
+  intros. unfold base.insert, map_insert, "!!!", map_lookup_total, lookup, insert. now destruct (decide (k = k')).
+Qed.
+
