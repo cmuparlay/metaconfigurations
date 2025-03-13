@@ -1202,7 +1202,95 @@ Section RWCAS.
                  ++ destruct (decide (π = π')).
                     ** subst. rewrite H4 in Hpending. contradiction.
                     ** reflexivity.
-      Qed. 
+      Qed.
+
+      Lemma S_inhabited : FullTracker.invariant impl (λ c M, ∃ σ f, S c σ f).
+      Proof.
+        unfold FullTracker.invariant, invariant, Procedure.invariant. intros r. induction r; intros Hrun.
+        - inv Hrun. cbn. eexists. exists (λ _, Idle).
+          econstructor. intro. constructor. cbn. auto.
+        - inversion Hrun. subst. inv H5. inv H1. pose proof IHr H2 as (σ & f & HS). inv HS. inv H0.
+          + eexists. cbn in *. eexists (<[π := Pending (initial_frame impl op0 arg0).(op) (initial_frame impl op0 arg0).(arg)]>f).
+            econstructor. intros π'. destruct (decide (π = π')).
+            * subst. rewrite Map.lookup_insert at 1. eapply tracker_inv_invoke.
+              ++ rewrite <- H1. now rewrite lookup_insert.
+              ++ reflexivity.
+            * subst. rewrite Map.lookup_insert_ne at 1 by assumption.
+              apply tracker_inv_step_diff with (c := base_configuration (final r)).
+              -- rewrite <- H1. now rewrite lookup_insert_ne by assumption.
+              -- congruence.
+              -- auto.
+          + cbn. inv H8; [ idtac | exfalso; eapply no_goto; eauto ]. destruct op0.
+            * destruct pc0.
+              -- inv H4. inv H9. exists (ϵ base Cell). exists (<[π := Linearized v]>f). inv H6. inv H5. inv H10. inv H0.
+                 rewrite H7. econstructor. intros π'. destruct (decide (π = π')).
+                 ++ subst. rewrite Map.lookup_insert at 1. econstructor.
+                    ** rewrite <- H1. now rewrite lookup_insert.
+                    ** reflexivity.
+                    ** reflexivity.
+                    ** cbn. rewrite lookup_insert. now rewrite H7.
+                 ++ rewrite Map.lookup_insert_ne at 1 by assumption.
+                    apply tracker_inv_step_diff with (c := base_configuration (final r)).
+                    ** rewrite <- H1. now rewrite lookup_insert_ne.
+                    ** congruence.
+                    ** auto.
+              -- destruct pc0.
+                 ++ inv H4. inv H9.
+                 ++ inv H4.
+            * destruct pc0.
+              -- inv H4. inv H9. inv H6. inv H5. inv H10. inv H0.
+                 remember ({| op := _; pc := 1; arg := arg0; registers := _ |}).
+                 exists (ϵ base Cell). exists (<[π := Pending f0.(op) f0.(arg)]>f).
+                 econstructor. intros π'. destruct (decide (π = π')).
+                 ++ subst. rewrite Map.lookup_insert at 1. eapply tracker_inv_write_cas_pending.
+                    ** rewrite <- H1. now rewrite lookup_insert.
+                    ** reflexivity.
+                    ** reflexivity.
+                 ++ rewrite Map.lookup_insert_ne at 1 by assumption. 
+                    apply tracker_inv_step_diff with (c := base_configuration (final r)).
+                    ** rewrite <- H1. now rewrite lookup_insert_ne by assumption.
+                    ** congruence.
+                    ** auto.
+              -- destruct pc0.
+                 ++ inv H4. inv H9. inv H7. inv H6. inv H7. inv H11. destruct ω, ω0. inv H9. inv H0.
+                    ** remember ({| op := _; pc := 2; arg := σ; registers := _ |}) as frame.
+                       exists (ϵ base Cell). exists (<[π := Linearized Value.Unit]>(update X)).
+                       econstructor. intros π'.
+                       destruct (decide (π = π')).
+                       --- subst. rewrite Map.lookup_insert at 1. eapply tracker_inv_write_response.
+                           +++ rewrite <- H1. rewrite lookup_insert. reflexivity.
+                           +++ reflexivity.
+                           +++ reflexivity.
+                       --- rewrite Map.lookup_insert_ne at 1 by assumption. eapply tracker_inv_step_diff_update.
+                           +++ rewrite <- H1. now rewrite lookup_insert_ne.
+                           +++ auto.
+                    ** remember ({| op := _; pc := 2; arg := v₂; registers := _ |}) as frame.
+                       exists (ϵ base Cell). exists (<[π := Linearized Value.Unit]>f).
+                       econstructor. intros π'.
+                       destruct (decide (π = π')).
+                       --- subst. rewrite Map.lookup_insert at 1. eapply tracker_inv_write_response.
+                           +++ rewrite <- H1. rewrite lookup_insert. reflexivity.
+                           +++ reflexivity.
+                           +++ reflexivity.
+                       --- rewrite Map.lookup_insert_ne at 1 by assumption. apply tracker_inv_step_diff with (c := base_configuration (final r)).
+                           +++ rewrite <- H1. now rewrite lookup_insert_ne.
+                           +++ rewrite Map.Dep.η in H5. congruence.
+                           +++ auto.
+                  ++ destruct pc0.
+                     ** inv H4. inv H9.
+                     ** inv H4.
+            + inv H8. pose proof return_state_constant H4 H9 as [_ Hϵ].
+              exists (ϵ base Cell). exists (<[π := Idle]>f).
+              cbn. econstructor. intros π'.
+              destruct (decide (π = π')).
+              * subst. rewrite Map.lookup_insert at 1. econstructor.
+                rewrite <- H1. now rewrite lookup_delete.
+              * rewrite Map.lookup_insert_ne at 1 by assumption.
+                apply tracker_inv_step_diff with (c := base_configuration (final r)).
+                -- rewrite <- H1. now rewrite lookup_delete_ne by assumption.
+                -- congruence.
+                -- auto.
+      Qed.
 
       Definition linearized_processes {base : configuration Π t ReadWrite.Cell} {g : Π → status Π ReadWrite.Cell} :
         (∀ π : Π, tracker_inv base π (g !!! π)) →
