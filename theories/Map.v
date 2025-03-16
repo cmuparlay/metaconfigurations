@@ -80,3 +80,8 @@ Proof.
   intros. unfold base.insert, map_insert, "!!!", map_lookup_total, lookup, insert. now destruct (decide (k = k')).
 Qed.
 
+Lemma insert_insert `{EqDecision K} {V} (k : K) (v : V) (m : t K V) : <[k := m !!! k]> (<[k := v]> m) = m.
+Proof.
+  unfold base.insert, Map.map_insert, "!!!", Map.map_lookup_total. apply Dep.insert_insert.
+Qed.
+
