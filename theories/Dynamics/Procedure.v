@@ -1327,9 +1327,9 @@ Section RWCAS.
       Definition linearized_writers {base : configuration Π t ReadWrite.Cell} {g : Π → status Π ReadWrite.Cell} :
         (∀ π : Π, tracker_inv base π (g !!! π)) →
           list Π →
-            snoc_list Π.
+            list Π.
       Proof.
-        intros Hinv l. refine (snoc_list_of_list (List.filter _ l)).
+        intros Hinv l. refine (List.filter _ l).
         intros π. destruct (Hinv π).
         - exact false.
         - exact false.
@@ -1348,7 +1348,7 @@ Section RWCAS.
       Lemma linearized_writers_correct {base f} (X : ∀ π : Π, tracker_inv base π (f !!! π)) (l : gset Π) :
         (∀ π : Π, π ∈ l ↔ f !!! π ≠ Idle) →
           ∀ π,
-            π ∈ linearized_writers X (elements l) ↔ linearized_writer X π.
+            π ∈ snoc_list_of_list (linearized_writers X (elements l)) ↔ linearized_writer X π.
       Proof.
         intros Hmem π. unfold linearized_writers. rewrite <- snoc_in_iff_list_in. rewrite elem_of_list_In.
         rewrite filter_In. split.
@@ -1382,45 +1382,111 @@ Section RWCAS.
         exact f0.
       Defined.
 
-      Definition unlinearize_writer {base} {f : Π → status Π ReadWrite.Cell} (X : ∀ π : Π, tracker_inv base π (f !!! π)) (π : Π) (Hlinw : linearized_writer X π) :
+      (* Definition unlinearize_writer {base} {f : Π → status Π ReadWrite.Cell} (X : ∀ π : Π, tracker_inv base π (f !!! π)) (π : Π) (Hlinw : linearized_writer X π) :
         ∀ π', tracker_inv base π' (<[π := Pending (op (linearized_writer_frame Hlinw)) (arg (linearized_writer_frame Hlinw))]> f !!! π').
       Proof.
         unfold linearized_writer in *. intros π'. destruct (decide (π = π')).
         - subst. rewrite Map.lookup_insert at 1. unfold linearized_writer_frame. destruct (X π'); try contradiction.
           rewrite e0. eapply tracker_inv_write_cas_pending; eauto.
         - rewrite Map.lookup_insert_ne at 1; eauto.
+      Qed. *)
+
+      (* Lemma foo : ∀ x, { f : P x & ∀ x, Q f x } { f : ∀ x, P x & ∀ x, Q f x } *)
+
+      Lemma unlinearize_writer {base} {f : Π → status Π ReadWrite.Cell} (X : ∀ π : Π, tracker_inv base π (f !!! π)) (π : Π) (Hlinw : linearized_writer X π) :
+        ∀ π' : Π, tracker_inv base π' (<[π := @Pending Π ReadWrite.t _ _ _ ReadWrite.Write (linearized_writer_frame Hlinw).(arg)]> f !!! π').
+      Proof.
+        intros π'. unfold insert, "!!!", Map.map_insert, Map.map_lookup_total, Map.lookup, Map.insert. destruct (decide (π = π')).
+        - destruct e. unfold linearized_writer in *. unfold linearized_writer_frame. destruct (X π).
+          + destruct Hlinw.
+          + destruct Hlinw.
+          + destruct Hlinw.
+          + destruct Hlinw.
+          + apply tracker_inv_write_cas_pending; assumption.
+          + destruct Hlinw.
+        - unfold insert, "!!!", Map.map_insert, Map.map_lookup_total, Map.lookup, Map.insert. apply X.
+      Defined.
+
+      Lemma unlinearize_writer_id {base} {f : Π → status Π ReadWrite.Cell} (X : ∀ π : Π, tracker_inv base π (f !!! π)) (π : Π) (Hlinw : linearized_writer X π) :
+        update (unlinearize_writer X π Hlinw) = update X.
+      Proof.
+        extensionality π'. unfold unlinearize_writer, linearized_writer, update in *.
+        unfold linearized_writer_frame. destruct (decide (π = π')).
+        - destruct e. destruct (X π); try contradiction. rewrite Map.lookup_insert at 1. congruence.
+        - assert (∀ v, <[π := v]>f !!! π' = f !!! π').
+          { intros. now rewrite Map.lookup_insert_ne at 1. }
+          now destruct (X π').
       Qed.
+
+      (* Search (~ (?P \/ ?Q) -> ~ ?P /\ ~ ?Q). *)
 
       Lemma linearize_writers_step {base f} (X : ∀ π : Π, tracker_inv base π (f !!! π)) (l : gset Π) σ :
         (∀ π : Π, π ∈ l ↔ f !!! π ≠ Idle) →
-          ∃ σ', δ_multi σ (update X) (linearized_writers X (elements l)) σ' f.
+          ∃ σ', δ_multi σ (update X) (snoc_list_of_list (linearized_writers X (elements l))) σ' f.
       Proof.
         intros Hout. pose proof linearized_writers_correct X l Hout as Hlin. clear Hout.
         generalize dependent X. revert f. assert (NoDup (elements l)) as Hunique by apply NoDup_elements. induction (elements l).
         - cbn. intros f X Hlin. exists σ. assert (update X = f); admit.
         - intros f X Hlin. cbn. cbn in Hlin. assert (∀ v, <[a := f !!! a]>(<[a := v]>f) = f) as η.
           { intros v. erewrite <- Map.insert_insert; eauto. }
-          pose proof (unlinearize_writer X a) as ulw. unfold linearized_writer, linearized_writer_frame in ulw.
-          destruct (X a).
+          pose proof (unlinearize_writer_id X a) as uwl. unfold linearized_writer, unlinearize_writer, linearized_writer_frame in uwl. destruct (X a).
           + inv Hunique. now apply IHl0.
           + inv Hunique. now apply IHl0.
           + inv Hunique. now apply IHl0.
           + inv Hunique. now apply IHl0.
-          + pose proof ulw I as X'. clear ulw. 
-            exists (arg f0). rewrite <- η with (v := Pending f0.(op) f0.(arg)). cbn. econstructor.
-            * assert (update X = update X').
-              { extensionality π'.
-                - destruct (decide (π = π')).  } rewrite H0.
-              assert ((∀ π : Π, π ∈ linearized_writers X' l0 ↔ match X' π with
-              | tracker_inv_write_cas_linearized _ _ _ _ _ _ _ _ _ => True
-              | _ => False
-              end)).
-              { admit. }
-              inv Hunique.
-              pose proof IHl0 H5 (<[a:=Pending (op f0) (arg f0)]> f) X' H1 as [? ?].
-              auto.
-              eapply IHl0.
-          + inv Hunique. now apply IHl0.
+          + exists (arg f0). rewrite <- η with (v := Pending f0.(op) f0.(arg)). cbn. 
+            cbn in *. fold (linearized_writers X l0) in *. pose proof uwl I as uwl.
+            remember (
+              (λ π' : Π,
+                match decide (a = π') as s
+                return (tracker_inv base π' match s with
+                | left eq_refl => _
+                | right _ => f π'
+                end)
+                with
+                | left e2 =>
+                match e2 as e in (_ = π) return (tracker_inv base π
+                match e with
+                | eq_refl => _
+                end) with
+                | eq_refl => tracker_inv_write_cas_pending base a f0 e e0 e1
+                end
+                | right _ => X π'
+                end)
+            ) as X'. rewrite <- uwl. inversion Hunique. clear Hunique. destruct H0, H1.
+            assert (linearized_writers X l1 = linearized_writers X' l1) as Hlineq.
+            { clear IHl0 Hlin. induction l1.
+              - reflexivity.
+              - set_unfold in H2. apply not_or_and in H2 as [Hxnota Hxl1].
+                inversion H3. destruct H0, H1. subst. cbn. destruct (decide (x = x0)).
+                + contradiction.
+                + cbn. destruct (X x0); auto.
+                  f_equal; auto. }
+            rewrite Hlineq.
+            unshelve epose proof IHl0 H3 (<[x := @Pending Π ReadWrite.t _ _ _ ReadWrite.Write (arg f0)]> f) X' _ as [σ' Hσ'].
+            * intros π'. rewrite <- Hlineq at 1.
+              pose proof Hlin π' as [Hfwd Hrev]. split.
+              -- intros Hin.
+                 pose proof (Hfwd (or_introl Hin)) as Hlw.
+                 unfold linearized_writer in *.
+                 rewrite HeqX'. destruct (decide (x = π')).
+                 ++ unfold not. intros. subst.
+                    apply snoc_in_iff_list_in in Hin.
+                    rewrite elem_of_list_In in Hin.
+                    unfold linearized_writers in Hin.
+                    apply filter_In in Hin as [Hin _].
+                    now rewrite <- elem_of_list_In in Hin.
+                 ++ assumption.
+              -- clear Hfwd. intros Hlw. unfold linearized_writer in *.
+                 rewrite HeqX' in Hlw. destruct (decide (x = π')).
+                 ++ subst. contradiction.
+                 ++ pose proof Hrev Hlw as [? | ?].
+                    ** assumption.
+                    ** now symmetry in H0.
+            * rewrite e0. econstructor.
+              -- eassumption.
+              -- rewrite Map.lookup_insert at 1. eauto.
+          Admitted.
         
 (* 
       Definition linearize_writers {base} {f : Π → status Π ReadWrite.Cell} (X : ∀ π : Π, tracker_inv base π (f !!! π)) (l : gset Π) (Hfin : (∀ π : Π, π ∈ l ↔ f !!! π ≠ Idle)) : 
