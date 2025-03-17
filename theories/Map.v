@@ -74,10 +74,29 @@ Proof.
   dependent destruction e0. reflexivity.
 Qed.
 
+Lemma ext `{EqDecision K} {V} (m m' : t K V) : (∀ k, m !!! k = m' !!! k) → m = m'.
+Proof.
+  intros H. unfold "!!!", Map.map_lookup_total, lookup in *. now extensionality k.
+Qed.
+
 Lemma lookup_insert_ne `{EqDecision K} {V} (k k' : K) (v : V) (m : t K V) : 
   k ≠ k' → <[k := v]> m !!! k' = m !!! k'.
 Proof.
   intros. unfold base.insert, map_insert, "!!!", map_lookup_total, lookup, insert. now destruct (decide (k = k')).
+Qed.
+
+Lemma insert_comm `{EqDecision K} {V} (k k' : K) (v v' : V) (m : t K V) :
+  k ≠ k' →
+    <[k := v]> (<[k' := v']> m) = <[k' := v']> (<[k := v]> m).
+Proof.
+  intros Hne. apply ext. intros k''.
+  destruct (decide (k'' = k)).
+  - subst. rewrite lookup_insert. rewrite lookup_insert_ne by auto.
+    now rewrite lookup_insert.
+  - rewrite lookup_insert_ne by auto.
+    destruct (decide (k' = k'')).
+    + subst. now repeat rewrite lookup_insert.
+    + now repeat rewrite lookup_insert_ne by auto.
 Qed.
 
 Lemma insert_insert `{EqDecision K} {V} (k : K) (v : V) (m : t K V) : <[k := m !!! k]> (<[k := v]> m) = m.
