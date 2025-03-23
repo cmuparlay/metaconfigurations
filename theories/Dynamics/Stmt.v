@@ -32,7 +32,7 @@ Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (arg : Value.t) (ψ : stringmap
     ⟨ π , arg , ψ , ϵ , If e s₁ s₂ ⟩ ⇓ₛ ⟨ ψ₂ , ϵ₂ , sig ⟩
   | eval_assign x e ϵ' v :
     ⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩ →
-    ⟨ π , arg , ψ , ϵ , Assign x e ⟩ ⇓ₛ ⟨ <[x:=v]>ψ , ϵ , Continue ⟩
+    ⟨ π , arg , ψ , ϵ , Assign x e ⟩ ⇓ₛ ⟨ <[x:=v]>ψ , ϵ' , Continue ⟩
   | eval_goto n :
     ⟨ π , arg , ψ , ϵ , Syntax.Stmt.Goto n ⟩ ⇓ₛ ⟨ ψ , ϵ , Goto n ⟩
   | eval_invoke ω op e ϵ' v :
