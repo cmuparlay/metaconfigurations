@@ -16,16 +16,7 @@ Variant eval_binop : Term.bop → Value.t → Value.t → Value.t → Type :=
   | eval_and (b₁ b₂ : bool) : eval_binop Term.And b₁ b₂ (b₁ && b₂).
 
 Variant eval_unop : Term.uop → Value.t → Value.t → Type :=
-  | eval_not (b : bool) : eval_unop Term.Not b (negb b).  
-
-    (* match bop, v₁, v₂ with
-    | Add, Value.Int n₁, Value.Int n₂ => (n₁ + n₂)%Z
-    | Sub, Value.Int n₁, Value.Int n₂ => (n₁ - n₂)%Z
-    | Mul, Value.Int n₁, Value.Int n₂ => (n₁ * n₂)%Z
-    | 
-    end. *)
-
-(* (ω : Ω) (op : (type ω).(OP)) (arg : (type ω).(ARG Π) *)
+  | eval_not (b : bool) : eval_unop Term.Not b (negb b).
 
 Variant eval_inv {Π Ω} `{Object Π Ω} π ϵ ω op arg σ res :=
   | eval_inv_intro :
