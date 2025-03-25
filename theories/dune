@@ -2,12 +2,6 @@
  (name Metaconfigurations)
  (theories stdpp)
  (package metaconfigurations)
- (synopsis "Coq formalization of metaconfigurations"))
+ (synopsis "Rocq formalization of metaconfigurations"))
 
 (include_subdirs qualified)
-
-; (rule
-;  (target binary_search.v)
-;  (deps ../src/binary_search.c)
-;  (action (run clightgen -o %{target} -normalize %{deps}))
-;  (mode fallback))
