@@ -12,3 +12,4 @@ _build
 .lia.cache
 bsearch
 .DS_Store
+*.zip
