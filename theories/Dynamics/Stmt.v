@@ -8,7 +8,7 @@ Variant signal :=
   | Goto (l : nat)
   | Return (v : Value.t).
 
-Reserved Notation "⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ Ψ' , ϵ' , sig ⟩" (at level 80, no associativity).
+Reserved Notation "⟨ π , arg , ψ , ϵ , s ⟩ ⇓ₛ ⟨ Ψ' , ϵ' , sig ⟩".
 
 Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (arg : Value.t) (ψ : stringmap Value.t) (ϵ : states Π Ω) : Stmt.t Π Ω → stringmap Value.t → states Π Ω → signal → Prop :=
   | eval_skip : ⟨ π , arg , ψ , ϵ , Skip ⟩ ⇓ₛ ⟨ ψ , ϵ , Continue ⟩

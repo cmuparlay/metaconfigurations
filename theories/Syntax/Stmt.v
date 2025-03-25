@@ -17,9 +17,6 @@ Section Stmt.
     | Invoke (inv : invocation Π Ω)
     | Skip.
 
-  Notation "s₁ `; s₂" := (Seq s₁ s₂) (at level 80).
-  Notation "x ← e" := (Assign x e) (at level 80).
-
 End Stmt.
 
 Arguments Seq {_ _ _ _}.

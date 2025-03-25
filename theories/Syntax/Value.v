@@ -11,10 +11,3 @@ Inductive t :=
 
 Coercion Int : Z >-> t.
 Coercion Bool : bool >-> t.
-
-Notation "'⊤ᵥ'" := Unit.
-
-Declare Scope value_scope.
-
-Notation "⟨ v₁ , v₂ ⟩ᵥ" := (Pair v₁ v₂) : value_scope.
-

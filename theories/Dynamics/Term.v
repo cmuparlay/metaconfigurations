@@ -2,7 +2,6 @@ From Metaconfigurations Require Import
   Map Syntax.Term Syntax.Value Object.
 From stdpp Require Import base stringmap decidable.
 Require Import Coq.Logic.FunctionalExtensionality.
-Require Import Coq.Program.Equality.
 
 Global Declare Scope dynamics_scope.
 
@@ -23,7 +22,7 @@ Variant eval_inv {Π Ω} `{Object Π Ω} π ϵ ω op arg σ res :=
     (type ω).(δ) (Map.lookup ω ϵ) π op arg σ res →
     eval_inv π ϵ ω op arg σ res.
 
-Reserved Notation "⟨ π , arg , Ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" (at level 80, no associativity).
+Reserved Notation "⟨ π , arg , Ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩".
 
 Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (arg : Value.t) (ψ : stringmap Value.t) (ϵ : states Π Ω) : Term.t Π Ω → states Π Ω → Value.t → Prop := 
   | eval_var x v :
@@ -59,5 +58,5 @@ Inductive eval {Π Ω} `{Object Π Ω} (π : Π) (arg : Value.t) (ψ : stringmap
   | eval_bool b :
     ⟨ π , arg , ψ , ϵ , Term.Bool b ⟩ ⇓ₑ ⟨ ϵ , b ⟩
   | eval_unit :
-    ⟨ π , arg , ψ , ϵ , ⊤ₑ ⟩ ⇓ₑ ⟨ ϵ , ⊤ᵥ ⟩
+    ⟨ π , arg , ψ , ϵ , Term.Unit ⟩ ⇓ₑ ⟨ ϵ , Value.Unit ⟩
 where "⟨ π , arg , ψ , ϵ , e ⟩ ⇓ₑ ⟨ ϵ' , v ⟩" := (eval π arg ψ ϵ e ϵ' v) : dynamics_scope.
